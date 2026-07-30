@@ -1,1 +1,3 @@
 recon/pruebas/*.xls
+node_modules/
+package-lock.json

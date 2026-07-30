@@ -14,8 +14,8 @@ const codigoParser = src.slice(desde, src.lastIndexOf('// ====', hasta));
 const fabrica = new Function(codigoParser + '\n; return { leerCFB, parsearLibro };');
 const { leerCFB, parsearLibro } = fabrica();
 
-function analiza(ruta) {
-  const buf = readFileSync(ruta);
+function analiza(nombre) {
+  const buf = readFileSync(new URL(nombre, import.meta.url));
   const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
   const cfb = leerCFB(ab);
   const wb = cfb.entradas.find((e) => e.tipo === 2 && /^(Workbook|Book)$/i.test(e.nombre));

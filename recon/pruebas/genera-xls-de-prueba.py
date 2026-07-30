@@ -1,4 +1,8 @@
-import xlwt, random
+import xlwt, random, os
+
+# Los .xls se generan junto a este script, no en el cwd, para que
+# `npm test` funcione desde la raiz del repo.
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 def guarda(nombre, filas, codigos_como_texto):
     wb = xlwt.Workbook(encoding='utf-8')

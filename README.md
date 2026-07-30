@@ -132,3 +132,13 @@ el userscript y la de la sonda no se hayan desincronizado.
 El detalle del reconocimiento —cómo se determinaron los selectores, por qué el
 postback es completo, de dónde salen `cod_gru` y `cod_mat`— está en
 [`recon/README.md`](recon/README.md).
+
+---
+
+## Parte 2: asistencia
+
+`asistencia-autofill.user.js` rellena la asistencia diaria por asignatura a
+partir de un JSON, con dry-run obligatorio. Su `cod_alum` es el mismo código de
+matrícula que produce este extractor, así que la salida de uno alimenta al otro.
+
+Ver [`README-asistencia.md`](README-asistencia.md).
