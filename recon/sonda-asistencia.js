@@ -199,8 +199,15 @@
       salida.tabla.controlesPorForma = [...porForma.values()];
 
       // ¿Ya hay asistencia registrada? Regla de seguridad 4 del encargo.
-      salida.tabla.checkboxesMarcadosAlLlegar =
-        [...tabla.querySelectorAll('input[type=checkbox]')].filter((c) => c.checked).length;
+      // Ojo: en esta pantalla los estados NO son checkboxes sino grupos de
+      // radios, así que contar solo checkboxes daría 0 siempre y haría creer
+      // que la hora está limpia cuando podría no estarlo.
+      salida.tabla.marcadosAlLlegar = {
+        checkboxes: [...tabla.querySelectorAll('input[type=checkbox]')].filter((c) => c.checked).length,
+        radios: [...tabla.querySelectorAll('input[type=radio]')].filter((c) => c.checked).length,
+        selectsNoVacios: [...tabla.querySelectorAll('select')].filter((s) => s.value && s.value !== '0' && s.value !== '%').length,
+        textosNoVacios: [...tabla.querySelectorAll('input[type=text], textarea')].filter((t) => lim(t.value) !== '').length,
+      };
 
       // --- ¿Dónde está el COD_ALUM? ---
       // En la parte 1 los COD_ALUM del export eran de 10 dígitos empezando por
