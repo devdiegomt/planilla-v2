@@ -6,6 +6,7 @@ Este paso existe para **no adivinar selectores**.
 | --- | --- | --- |
 | `sonda-reportecalificamatriz.js` (v1) | no, lectura pura de DOM | selectores, botones, tablas, AJAX |
 | `sonda-v3-export.js` | **sí, un POST** (el mismo del botón Exportar) | formato del archivo exportado |
+| `sonda-v4-xls.js` | **sí, un POST** (idem) | parsea el `.xls` y vuelca el layout de la hoja |
 
 ## Hallazgos confirmados
 
@@ -89,3 +90,51 @@ Lo que decide el plan es `formatoDetectado`:
 
 Y `codAlum.muestra` trae los primeros 3 códigos para contrastar contra tu
 Califica del 801.
+
+### Resultado de la v3
+
+```
+content-type:        application/vnd.ms-excel
+content-disposition: attachment; filename=Califica-801-2508-02.xls
+primeros bytes:      d0 cf 11 e0 a1 b1 1a e1   → OLE2 / BIFF8 real
+tamaño:              14336 bytes
+```
+
+No es HTML disfrazado: es un `.xls` binario de verdad. El nombre del archivo
+confirma el esquema `Califica-<curso>-<materia>-<periodo>.xls`, así que
+`cod_mat` sale de ahí sin parsear el texto del `<select>`.
+
+## v4 — parsear el .xls sin dependencias
+
+`sonda-v4-xls.js` lleva embebido el parser candidato (contenedor OLE2/CFB +
+registros BIFF8), hace el mismo POST y vuelca la hoja como grilla. Mismo
+protocolo que la v3: 801 cargado, consola, pegar, `F5` al terminar.
+
+Lo que interesa de la salida es `perfilColumnas` y `veredicto`: cuentan, por
+columna, cuántas celdas son de exactamente 10 dígitos, y señalan cuál es la del
+COD_ALUM.
+
+### Banco de pruebas del parser
+
+El parser se validó **antes** de escribir el extractor, contra archivos BIFF8
+reales generados con `xlwt`:
+
+```bash
+cd recon/pruebas
+pip install xlwt
+python3 genera-xls-de-prueba.py    # crea 3 .xls (no versionados)
+node prueba-parser.mjs
+```
+
+`prueba-parser.mjs` no tiene copia del parser: lo recorta de
+`sonda-v4-xls.js` en tiempo de ejecución, así que prueba el código que
+realmente se envía.
+
+| Caso | Qué cubre |
+| --- | --- |
+| `caso1_texto.xls` | 30 estudiantes, COD_ALUM como texto (`LABELSST`) |
+| `caso2_numero.xls` | COD_ALUM como número — verifica que `RK` no pierde precisión en 10 dígitos |
+| `caso3_continue.xls` | 600 filas, SST partido en `CONTINUE`, mezclando ASCII / latin1 / griego para forzar el cambio de `grbit` a mitad de cadena |
+
+El tercero es el que importa: es el bug clásico de los lectores de BIFF8. Las
+600 cadenas se comparan una por una contra lo que generó el script.
