@@ -45,3 +45,60 @@ print('generados')
 for n in ['caso1_texto.xls', 'caso2_numero.xls', 'caso3_continue.xls']:
     import os
     print(' ', n, os.path.getsize(n), 'bytes')
+
+# --- caso 4: replica el layout REAL de Califica-801-2508-02.xls ---------------
+# Membrete disperso, encabezados en la fila 12, columna 0 siempre vacia.
+def guarda_real(nombre, n_alumnos, codigos_como_texto, filas_membrete_extra=0):
+    wb = xlwt.Workbook(encoding='utf-8')
+    ws = wb.add_sheet('RepCalifica')
+    d = filas_membrete_extra
+    ws.write(1, 5, 'GIMNASIO LOS ARRAYANES BILINGUE')
+    ws.write(4, 5, 'Año Lectivo: 2026')
+    ws.write(10 + d, 1, 'Curso: OCHOCIENTOS UNO (801) Materia:Information Technology')
+    logros = ['Ciencias T2 - C4. Observe Carefully With Bodily Learning',
+              'Ciencias T2 - C5. Improve Reading Or Digital Support',
+              'Matemat T2 - C6. Aplica Simple Con Enteros']
+    for c in range(8, 18):
+        ws.write(11 + d, c, logros[c % 3])
+    enc = ['COD_PER', 'COD_CUR', 'COD_GRU', 'COD_MAT', 'Nombre Materia',
+           'COD_ALUM', 'Nombre Alumno']
+    for c, h in enumerate(enc):
+        ws.write(12 + d, c + 1, h)
+    for c in range(8, 18):
+        ws.write(12 + d, c, 'log_%d' % (200 + c))
+    apellidos = ['ANGEL BRAVO MEJIA', 'ÁLVAREZ SUÁREZ ISABEL SOFÍA',
+                 'MUÑOZ PEÑA ANDRÉS', 'ZÚÑIGA MOLINA NICOLÁS']
+    for i in range(n_alumnos):
+        f = 13 + d + i
+        cod = str(2019034000 + i * 7)
+        ws.write(f, 1, '02')
+        ws.write(f, 2, '801')
+        ws.write(f, 3, '08')
+        ws.write(f, 4, '2508')
+        ws.write(f, 5, 'Information Technology')
+        ws.write(f, 6, cod if codigos_como_texto else int(cod))
+        ws.write(f, 7, apellidos[i % len(apellidos)] + ' ' + str(i))
+        for c in range(8, 18):
+            ws.write(f, c, (i * 10 + c) % 101)
+    wb.save(nombre)
+
+guarda_real('caso4_layout_real.xls', 28, True)
+guarda_real('caso5_cod_numerico.xls', 28, False)
+guarda_real('caso6_membrete_corrido.xls', 28, True, filas_membrete_extra=5)
+for n in ['caso4_layout_real.xls', 'caso5_cod_numerico.xls', 'caso6_membrete_corrido.xls']:
+    import os
+    print(' ', n, os.path.getsize(n), 'bytes')
+
+# --- caso 7: hoja sin columna COD_ALUM (debe fallar limpio) -------------------
+wb = xlwt.Workbook(encoding='utf-8')
+ws = wb.add_sheet('RepCalifica')
+for c, h in enumerate(['No', 'MATRICULA', 'ESTUDIANTE', 'NOTA']):
+    ws.write(3, c, h)
+for i in range(5):
+    ws.write(4 + i, 0, i + 1)
+    ws.write(4 + i, 1, 'M%04d' % i)
+    ws.write(4 + i, 2, 'ALGUIEN APELLIDO %d' % i)
+    ws.write(4 + i, 3, 50)
+wb.save('caso7_sin_codalum.xls')
+import os
+print('  caso7_sin_codalum.xls', os.path.getsize('caso7_sin_codalum.xls'), 'bytes')
