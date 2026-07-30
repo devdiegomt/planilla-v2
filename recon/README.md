@@ -1,9 +1,35 @@
 # Reconocimiento previo — ReporteCalificaMatriz.aspx
 
-Este paso existe para **no adivinar selectores**. La sonda solo lee el DOM: no
-envía formularios, no dispara postbacks y no toca la Session del servidor.
+Este paso existe para **no adivinar selectores**.
 
-## Cómo correrla
+| Sonda | Golpea el servidor | Qué responde |
+| --- | --- | --- |
+| `sonda-reportecalificamatriz.js` (v1) | no, lectura pura de DOM | selectores, botones, tablas, AJAX |
+| `sonda-v3-export.js` | **sí, un POST** (el mismo del botón Exportar) | formato del archivo exportado |
+
+## Hallazgos confirmados
+
+- **Postback completo.** `Sys.WebForms.PageRequestManager` no tiene instancia en
+  esta página, pese a que carga `ScriptResource.axd`. No hay UpdatePanel.
+- **Selector de curso:** `ctl00_ContentPlaceHolder1_lstCurso` /
+  `ctl00$ContentPlaceHolder1$lstCurso`, AutoPostBack vía
+  `setTimeout('__doPostBack(...)', 0)`. Sin botón "Consultar".
+- **Values paddeados a 5 caracteres:** `"801  "`, `"1001 "`. Comparar siempre
+  con `.trim()`.
+- **20 opciones** = 19 cursos + `"%"` (`< TODOS >`).
+- **`cod_mat` sale del texto, no del value:** `lstMateria` da
+  `value="1035"` con texto `"Information Technology-2508"`. El 2508 es el
+  sufijo tras el último guion.
+- **`cod_gru` no está en el DOM.** Hay que derivarlo del código de curso
+  (`801→08`, `1001→10`).
+- **No hay lista de estudiantes en la página.** Con el 801 cargado
+  (`hfCurso: "801  "`), `tablas: []`. El único número de 10 dígitos es la foto
+  del menú (`ctl00_FotoMenu → ../Fotos/1007718065.jpg`). El COD_ALUM solo puede
+  venir del archivo de Exportar → por eso existe la v3.
+- **`btnImportar` es el camino de escritura.** Vetado: ninguna sonda ni el
+  extractor lo incluyen en el POST.
+
+## v1 — cómo correrla
 
 1. Entrar a Classroom Live Web con tu cuenta y navegar por el menú hasta
    **Importar/exportar planilla individual GLA** (id 1096).
@@ -38,15 +64,28 @@ línea 24.
    - `donde: "texto"` con `indiceColumna` → está en una columna de la tabla.
    - `donde: "atributo:..."` → está oculto en la fila (`data-*`, `value`, `onclick`).
 
-## Lo que la sonda no puede contestar sola
+## v3 — formato del archivo exportado
 
-Si el cambio de curso es postback **completo** o **parcial**. La sección `ajax`
-da pistas fuertes (`hayPageRequestManager`, `updatePanelsRegistrados`,
-`controlesAsync`), pero la confirmación es visual:
+Como el COD_ALUM no está en el DOM, hay que ver qué produce Exportar.
 
-> Cambia de curso a mano una vez y observa: ¿parpadea la página entera y el
-> scroll salta arriba (**completo**), o solo se refresca la tabla
-> (**parcial**)?
+1. ReporteCalificaMatriz.aspx con el **801 cargado** (no `< TODOS >`).
+2. `F12` → Console → pegar `sonda-v3-export.js` → `Enter`.
+3. Pegarme el JSON y **recargar la página** (`F5`) para refrescar el VIEWSTATE.
 
-El extractor final maneja los dos casos, pero saberlo de antemano simplifica el
-diseño y evita una corrida de prueba.
+Esta sonda hace **un POST**: el mismo que el botón Exportar. Es de lectura
+(genera un archivo, no modifica nada), lee la respuesta en memoria sin
+guardarla en disco, no cambia de curso, y excluye explícitamente
+`btnImportar` del cuerpo del POST (`camposEnviados.incluyeImportar` lo
+confirma en la salida).
+
+Lo que decide el plan es `formatoDetectado`:
+
+| Firma | Formato | Parseo |
+| --- | --- | --- |
+| `3c ...` (`<`) | HTML disfrazado de `.xls` | `DOMParser`, sin dependencias |
+| texto con `,` o `;` | CSV / TSV | trivial |
+| `50 4b 03 04` | XLSX real (ZIP) | requiere inflate — replantear |
+| `d0 cf 11 e0` | XLS binario OLE2 | requiere parser — replantear |
+
+Y `codAlum.muestra` trae los primeros 3 códigos para contrastar contra tu
+Califica del 801.
