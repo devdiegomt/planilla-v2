@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLA — Extractor de COD_ALUM (Classroom Live Web)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      2.0.1
+// @version      2.1.0
 // @description  Recorre los 19 cursos de ReporteCalificaMatriz.aspx y extrae, por curso, la lista de estudiantes con su COD_ALUM. Salida: un único JSON descargable.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/ReporteCalificaMatriz.aspx
@@ -57,6 +57,10 @@
     '1001', '1002', '1003', '1004',
     '1101', '1102', '1103', '1104',
   ];
+
+  // Se muestra en el panel: sin esto, diagnosticar "¿qué versión tenés
+  // cargada?" obliga a preguntar. Una prueba verifica que coincida con @version.
+  const VERSION = '2.1.0';
 
   const CLAVE_ESTADO = 'gla_codalum_extractor_v1';
   const ESPERA_MIN_MS = 1500;   // entre cursos
@@ -645,7 +649,7 @@
   const panel = document.createElement('div');
   panel.id = 'gla-panel';
   panel.innerHTML = `
-    <header><span class="pt">Extractor COD_ALUM</span><span id="gla-min" style="cursor:pointer">—</span></header>
+    <header><span class="pt">Extractor COD_ALUM</span><span id="gla-ver" style="opacity:.65;font-weight:400;font-size:11px"></span><span id="gla-min" style="cursor:pointer">—</span></header>
     <div class="cuerpo">
       <div class="estado" id="gla-estado">Listo. ${CURSOS_ESPERADOS.length} cursos por recorrer.</div>
       <div class="barra"><i id="gla-barra"></i></div>
@@ -727,7 +731,14 @@
   const ID_HF_PROFESOR = 'ctl00_ContentPlaceHolder1_hfProfesor';
   // El botón de exportar se llama igual en las dos pantallas: NOMBRE_BTN_EXPORTAR.
 
-  const esPantallaPorProfesor =() => /ReporteCalificaMatrizProfesor\.aspx$/i.test(location.pathname);
+  /*
+   * El modo lo decide el DOM, no la URL: lo que importa es qué controles tiene
+   * la página. La pantalla por profesor trae lstProfesor y no trae lstCurso;
+   * la individual, al revés. Así la detección no depende de que la ruta sea
+   * exactamente la esperada.
+   */
+  const esPantallaPorProfesor = () =>
+    !!document.getElementById(ID_LST_PROFESOR) && !document.getElementById(ID_LST_CURSO);
 
   function revisarProfesorSeleccionado() {
     const lst = document.getElementById(ID_LST_PROFESOR);
@@ -968,6 +979,8 @@
   /* En la pantalla por profesor no hay nada que recorrer: un POST trae las 19
      hojas. El modo lento queda como respaldo en la pantalla individual, por si
      el colegio cambia el reporte agregado. */
+  panel.querySelector('#gla-ver').textContent = 'v' + VERSION;
+
   if (esPantallaPorProfesor()) {
     const revision = revisarProfesorSeleccionado();
     $estado.textContent = revision.error
@@ -980,6 +993,11 @@
     else if (!revision.esPropio) log(`Ojo: el selector no está en tu código (${revision.propio}).`, 'err');
     return;
   }
+
+  /* Modo lento. Si el panel aparece acá cuando esperabas el rápido, esta línea
+     es el diagnóstico: dice en qué pantalla cree estar y dónde está la otra. */
+  log(`Pantalla individual (${location.pathname.split('/').pop()}): recorrido curso por curso.`);
+  log('El modo de 1 petición está en "Importar/exportar planillas por profesor GLA".');
 
   // Si quedó una corrida a medias (por una recarga), ofrecer reanudarla.
   const previo = Estado.leer();

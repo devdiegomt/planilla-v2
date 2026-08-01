@@ -25,9 +25,21 @@ const DOCENTES = [
   ['3', '3 - ADRIANA JARAMILLO SOTO'],
 ];
 
-function nuevaPagina({ profesorSeleccionado = '451', pagina = 'ReporteCalificaMatrizProfesor.aspx' } = {}) {
+/* Las dos pantallas se distinguen por sus controles, igual que en la
+   plataforma: la de por profesor trae lstProfesor y no lstCurso, y la
+   individual al revés. El fixture tiene que respetarlo o la prueba del modo
+   lento pasa por el motivo equivocado. */
+function nuevaPagina({ profesorSeleccionado = '451',
+  pagina = 'ReporteCalificaMatrizProfesor.aspx', porProfesor = null } = {}) {
+  const esPorProfesor = porProfesor ?? !/^ReporteCalificaMatriz\.aspx$/i.test(pagina);
   const opciones = DOCENTES
     .map(([v, t]) => `<option value="${v}"${v === profesorSeleccionado ? ' selected' : ''}>${t}</option>`).join('');
+
+  const selectorPrincipal = esPorProfesor
+    ? `<select id="ctl00_ContentPlaceHolder1_lstProfesor"
+               name="ctl00$ContentPlaceHolder1$lstProfesor">${opciones}</select>`
+    : `<select id="ctl00_ContentPlaceHolder1_lstCurso" name="ctl00$ContentPlaceHolder1$lstCurso">
+         <option value="%">&lt;TODOS&gt;</option><option value="801  ">OCHOCIENTOS UNO</option></select>`;
 
   const dom = new JSDOM(`<!doctype html><html><head></head><body>
     <form id="aspnetForm" action="./${pagina}" method="post">
@@ -36,8 +48,7 @@ function nuevaPagina({ profesorSeleccionado = '451', pagina = 'ReporteCalificaMa
       <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="ZmFrZQ==">
       <input type="hidden" name="ctl00$ContentPlaceHolder1$hfProfesor"
              id="ctl00_ContentPlaceHolder1_hfProfesor" value="451">
-      <select id="ctl00_ContentPlaceHolder1_lstProfesor"
-              name="ctl00$ContentPlaceHolder1$lstProfesor">${opciones}</select>
+      ${selectorPrincipal}
       <select id="ctl00_ContentPlaceHolder1_lstPeriodo" name="ctl00$ContentPlaceHolder1$lstPeriodo">
         <option value="02" selected>SEGUNDO</option></select>
       <input type="submit" id="ctl00_ContentPlaceHolder1_btnExportar"
@@ -140,6 +151,25 @@ console.log('\n[guarda: otro docente exige confirmación aparte]');
 }
 
 // ====================================================================== 5
+console.log('\n[la deteccion es por DOM, no por URL]');
+{
+  // Si el modo dependiera de la ruta, una URL inesperada lo mandaria al modo
+  // equivocado en silencio. Lo que decide es que controles hay.
+  const p = nuevaPagina({ pagina: 'OtraRuta.aspx', porProfesor: true });
+  ok(/1 petición/.test(p.q('#gla-iniciar').textContent),
+    'con lstProfesor y sin lstCurso elige el modo rápido aunque la ruta no sea la esperada');
+}
+
+console.log('\n[el panel dice qué versión es]');
+{
+  const p = nuevaPagina();
+  const enPanel = p.q('#gla-ver').textContent;
+  const enCabecera = (/@version\s+(\S+)/.exec(FUENTE) || [])[1];
+  ok(/^v\d+\.\d+\.\d+$/.test(enPanel), 'la muestra en la cabecera del panel: ' + enPanel);
+  ok(enPanel === 'v' + enCabecera,
+    `coincide con @version (${enCabecera}): sin esto, diagnosticar "qué versión tenés" obliga a preguntar`);
+}
+
 console.log('\n[en la pantalla individual sigue el modo lento]');
 {
   const p = nuevaPagina({ pagina: 'ReporteCalificaMatriz.aspx' });
@@ -147,6 +177,8 @@ console.log('\n[en la pantalla individual sigue el modo lento]');
   ok(!/1 petición/.test(p.q('#gla-iniciar').textContent),
     'no ofrece el modo rápido: "' + p.q('#gla-iniciar').textContent + '"');
   ok(/19 cursos/.test(p.q('#gla-estado').textContent), 'ofrece el recorrido curso por curso');
+  ok(/Pantalla individual/.test(p.log()), 'el log dice en qué pantalla cree estar');
+  ok(/por profesor/.test(p.log()), 'y dónde encontrar el modo rápido');
 }
 
 console.log('\n' + (fallos ? '✗ ' + fallos + ' fallas' : '✓ todo verde'));
