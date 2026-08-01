@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         GLA — Extractor de COD_ALUM (Classroom Live Web)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      1.0.0
+// @version      2.0.0
 // @description  Recorre los 19 cursos de ReporteCalificaMatriz.aspx y extrae, por curso, la lista de estudiantes con su COD_ALUM. Salida: un único JSON descargable.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/ReporteCalificaMatriz.aspx
+// @match        *://webapps3-classroomliveweb.com/*/Seguro/ReporteCalificaMatrizProfesor.aspx
 // @include      https://webapps3-classroomliveweb.com:2443/*/Seguro/ReporteCalificaMatriz.aspx
+// @include      /^https?:\/\/[^/]*classroomliveweb\.com(:\d+)?\/.*\/Seguro\/ReporteCalificaMatriz(Profesor)?\.aspx/
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -522,13 +524,9 @@
     return normaliza(v);
   };
 
-  function extraerDelLibro(buffer) {
-    const cfb = leerCFB(buffer);
-    const wb = cfb.entradas.find((e) => e.tipo === 2 && /^(Workbook|Book)$/i.test(e.nombre));
-    if (!wb) throw new Error('El archivo no tiene stream Workbook');
-
-    const libro = parsearLibro(cfb.leerStream(wb));
-    const matriz = libro.matrices[0];
+  /* Una hoja → un curso. El export por profesor trae 19 hojas en un archivo,
+     el individual trae una: el mismo código sirve para las dos. */
+  function extraerDeMatriz(matriz) {
     if (!matriz || !matriz.length) throw new Error('La hoja vino vacía');
 
     // Localizo la fila de encabezados buscando COD_ALUM, en vez de asumir que
@@ -564,6 +562,36 @@
         nombre: aTexto(fila[colNombre]),
       })),
     };
+  }
+
+  function abrirLibro(buffer) {
+    const cfb = leerCFB(buffer);
+    const wb = cfb.entradas.find((e) => e.tipo === 2 && /^(Workbook|Book)$/i.test(e.nombre));
+    if (!wb) throw new Error('El archivo no tiene stream Workbook');
+    return parsearLibro(cfb.leerStream(wb));
+  }
+
+  /* Todas las hojas con datos. Una que falle no tumba las demás: se registra
+     y se sigue, igual que un curso que falla en el modo lento. */
+  function extraerHojas(buffer) {
+    const libro = abrirLibro(buffer);
+    const cursos = [], errores = [];
+    libro.matrices.forEach((matriz, i) => {
+      const hoja = libro.nombresHoja[i] || `Hoja${i + 1}`;
+      try {
+        const datos = extraerDeMatriz(matriz);
+        if (datos.estudiantes.length) cursos.push({ hoja, ...datos });
+        else errores.push({ cod_cur: datos.cod_cur || hoja, tipo: 'sin_estudiantes', detalle: `la hoja ${hoja} no trajo filas` });
+      } catch (e) {
+        errores.push({ cod_cur: hoja, tipo: 'fallo', detalle: `hoja ${hoja}: ${e.message}` });
+      }
+    });
+    return { cursos, errores, nHojas: libro.matrices.length };
+  }
+
+  // El modo lento espera un solo curso por archivo.
+  function extraerDelLibro(buffer) {
+    return extraerDeMatriz(abrirLibro(buffer).matrices[0]);
   }
 
   // ======================================================================
@@ -680,6 +708,52 @@
       if (cod && cod !== '%') mapa.set(cod, o.value);
     }
     return mapa;
+  }
+
+  // ======================================================================
+  // MODO RÁPIDO — ReporteCalificaMatrizProfesor.aspx
+  // ======================================================================
+
+  /*
+   * Esa pantalla exporta TODAS las planillas de un docente en un solo archivo:
+   * Califica-451-02.xls, 19 hojas, una por curso. Una petición en vez de 38.
+   *
+   * El selector de profesor tiene 187 opciones y "-1" es TODOS. Exportar las
+   * planillas de todo el colegio es una acción distinta de exportar las tuyas,
+   * así que el script solo procede con tu propio código —el que el servidor
+   * puso en hfProfesor— y para todo lo demás pide una confirmación aparte.
+   */
+  const ID_LST_PROFESOR = 'ctl00_ContentPlaceHolder1_lstProfesor';
+  const ID_HF_PROFESOR = 'ctl00_ContentPlaceHolder1_hfProfesor';
+  // El botón de exportar se llama igual en las dos pantallas: NOMBRE_BTN_EXPORTAR.
+
+  const esPantallaPorProfesor =() => /ReporteCalificaMatrizProfesor\.aspx$/i.test(location.pathname);
+
+  function revisarProfesorSeleccionado() {
+    const lst = document.getElementById(ID_LST_PROFESOR);
+    const propio = document.getElementById(ID_HF_PROFESOR)?.value?.trim();
+    if (!lst) return { error: 'no encuentro el selector de profesor.' };
+
+    const elegido = String(lst.value).trim();
+    const texto = lim(lst.selectedOptions[0]?.text);
+    if (elegido === '-1') {
+      return { error: `el selector está en "${texto}" (${lst.options.length} docentes). ` +
+        'Elegí tu propio nombre: no voy a descargar las planillas de todo el colegio.' };
+    }
+    return { elegido, texto, propio, esPropio: !!propio && elegido === propio };
+  }
+
+  async function extraerTodoDeUnaVez(señal) {
+    const params = serializarFormulario(document);
+    params.set('__EVENTTARGET', '');
+    params.set('__EVENTARGUMENT', '');
+    params.set(NOMBRE_BTN_EXPORTAR, 'Exportar');
+
+    const r = await postear(params, señal);
+    const disposicion = r.headers.get('content-disposition') || '';
+    const buf = await r.arrayBuffer();
+    const m = /filename=([^;]+)/i.exec(disposicion);
+    return { buf, nombreArchivo: m ? m[1].trim() : null, bytes: buf.byteLength };
   }
 
   function descargarJSON(datos) {
@@ -815,6 +889,74 @@
     Estado.limpiar();
   }
 
+  /* Modo rápido: un POST, 19 hojas, sin recorrer nada. */
+  async function correrRapido(confirmadoAjeno) {
+    if (corriendo) return;
+
+    const revision = revisarProfesorSeleccionado();
+    if (revision.error) { log(revision.error, 'err'); return; }
+
+    // Exportar las planillas de otro docente es legítimo si tenés el rol para
+    // hacerlo, pero no debería ocurrir por inercia: se pide un clic aparte.
+    if (!revision.esPropio && !confirmadoAjeno) {
+      log(`El selector está en "${revision.texto}", que no es tu código (${revision.propio}).`, 'err');
+      log('Pulsá otra vez para confirmar que querés esas planillas, o cambiá el selector.', 'err');
+      $iniciar.textContent = 'Confirmar (docente ajeno)';
+      $iniciar.onclick = () => correrRapido(true);
+      return;
+    }
+
+    corriendo = true;
+    abortado = false;
+    controlador = new AbortController();
+    $iniciar.disabled = true;
+    $abortar.disabled = false;
+
+    try {
+      log(`Exportando las planillas de ${revision.texto}…`);
+      progreso(0, 1, 'Pidiendo el archivo…');
+      const exp = await extraerTodoDeUnaVez(controlador.signal);
+      log(`Archivo recibido: ${exp.nombreArchivo || 'sin nombre'} (${Math.round(exp.bytes / 1024)} KB).`);
+
+      progreso(0.5, 1, 'Parseando las hojas…');
+      const { cursos, errores, nHojas } = extraerHojas(exp.buf);
+      log(`${nHojas} hoja(s) en el archivo.`);
+
+      for (const c of cursos) {
+        const malos = c.estudiantes.filter((e) => !/^\d{10}$/.test(e.cod_alum));
+        if (malos.length) {
+          errores.push({
+            cod_cur: c.cod_cur, tipo: 'cod_alum_invalido',
+            detalle: `${malos.length} código(s) no son de 10 dígitos`,
+            muestra: malos.slice(0, 5).map((e) => e.cod_alum),
+          });
+        }
+        log(`${c.cod_cur || c.hoja}: ${c.estudiantes.length} estudiantes`, 'ok');
+      }
+
+      const salida = {
+        generado: new Date().toISOString(),
+        cursos: cursos.map(({ hoja, ...resto }) => resto),
+        errores,
+      };
+      const totalEst = salida.cursos.reduce((n, c) => n + c.estudiantes.length, 0);
+
+      const faltantes = CURSOS_ESPERADOS.filter((c) => !salida.cursos.some((x) => x.cod_cur === c));
+      if (faltantes.length) log(`Aviso: no vinieron ${faltantes.join(', ')}`, 'err');
+
+      progreso(1, 1, `Listo: ${salida.cursos.length} cursos, ${totalEst} estudiantes.`);
+      log(`Terminado. ${salida.cursos.length} cursos, ${totalEst} estudiantes, ${errores.length} error(es).`, 'ok');
+      descargarJSON(salida);
+    } catch (e) {
+      if (!(e && e.name === 'AbortError')) log('Falló: ' + (e && e.message ? e.message : e), 'err');
+    } finally {
+      corriendo = false;
+      $iniciar.disabled = false;
+      $abortar.disabled = true;
+      controlador = null;
+    }
+  }
+
   $iniciar.onclick = () => correr(false);
   $abortar.onclick = () => {
     abortado = true;
@@ -822,6 +964,22 @@
     $abortar.disabled = true;
     log('Abortando…');
   };
+
+  /* En la pantalla por profesor no hay nada que recorrer: un POST trae las 19
+     hojas. El modo lento queda como respaldo en la pantalla individual, por si
+     el colegio cambia el reporte agregado. */
+  if (esPantallaPorProfesor()) {
+    const revision = revisarProfesorSeleccionado();
+    $estado.textContent = revision.error
+      ? 'Revisá el selector de profesor.'
+      : `Listo. Un archivo con todas las planillas de ${revision.texto}.`;
+    $iniciar.textContent = 'Extraer todo (1 petición)';
+    $iniciar.onclick = () => correrRapido(false);
+    log('Pantalla por profesor: no hace falta recorrer curso por curso.');
+    if (revision.error) log(revision.error, 'err');
+    else if (!revision.esPropio) log(`Ojo: el selector no está en tu código (${revision.propio}).`, 'err');
+    return;
+  }
 
   // Si quedó una corrida a medias (por una recarga), ofrecer reanudarla.
   const previo = Estado.leer();

@@ -19,6 +19,29 @@ Un archivo, sin dependencias, sin build.
 
 ## Uso
 
+Hay dos pantallas y el script funciona en las dos.
+
+### Rápido — *Importar/exportar planillas por profesor GLA* (recomendado)
+
+Esa pantalla exporta **todas tus planillas en un solo archivo**:
+`Califica-451-02.xls`, 19 hojas, una por curso. El script hace **una sola
+petición**, parsea las 19 hojas y descarga el mismo JSON. Tres segundos en vez
+de un minuto.
+
+1. Entrar por el menú a *Evaluación → Importar/exportar planillas por profesor GLA*.
+2. Verificar que el selector de profesor esté en **tu nombre**.
+3. **Extraer todo (1 petición)**.
+
+El selector tiene 187 docentes y `-1` significa `< TODOS >`. El script se
+niega a exportar con `< TODOS >`, y si el selector apunta a un docente que no
+es el tuyo —compara contra el `hfProfesor` que puso el servidor— pide un
+segundo clic de confirmación en vez de proceder.
+
+### Lento — *Importar/exportar planilla individual GLA*
+
+Recorre los 19 cursos de a uno. Queda como respaldo por si el colegio cambia
+el reporte agregado.
+
 1. Entrar a Classroom Live Web con tu cuenta.
 2. Navegar **por el menú** hasta *Importar/exportar planilla individual GLA*.
    No se puede llegar por URL: el destino vive en la Session del servidor.

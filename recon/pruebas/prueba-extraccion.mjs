@@ -25,9 +25,9 @@ const bloqueExtraccion = recorta('const normaliza =', '// ESTADO PERSISTIDO');
 const fabrica = new Function(
   bloqueParser.replace(/\/\/ =+\s*$/, '') +
   '\n' + bloqueExtraccion.replace(/\/\/ =+\s*$/, '') +
-  '\n; return { extraerDelLibro, clave, aTexto };'
+  '\n; return { extraerDelLibro, extraerHojas, clave, aTexto };'
 );
-const { extraerDelLibro, clave, aTexto } = fabrica();
+const { extraerDelLibro, extraerHojas, clave, aTexto } = fabrica();
 
 const leer = (n) => {
   const b = readFileSync(new URL(n, import.meta.url));
@@ -110,6 +110,31 @@ console.log('\n[negativos]');
 }
 
 // ------------------------------------------------ guarda contra desincronizacion
+console.log('\n[un archivo con varias hojas: el export por profesor]');
+{
+  // Califica-451-02.xls trae 19 hojas, una por curso, en una sola descarga.
+  const r = extraerHojas(leer('caso8_multihoja.xls'));
+  console.log('  cursos:', r.cursos.map((c) => `${c.cod_cur}(${c.estudiantes.length})`).join(' '));
+
+  ok(r.nHojas === 4, 've las 4 hojas del archivo');
+  ok(r.cursos.length === 3, 'extrae los 3 cursos con datos');
+  ok(r.cursos.map((c) => c.cod_cur).join() === '801,802,1101', 'cada hoja es un curso distinto');
+  ok(r.cursos[0].estudiantes.length === 28 && r.cursos[2].estudiantes.length === 31,
+    'con su propio conteo de estudiantes');
+  ok(r.cursos[2].cod_gru === '11', 'y su propio cod_gru');
+  ok(r.cursos.every((c) => c.estudiantes.every((e) => /^\d{10}$/.test(e.cod_alum))),
+    'todos los codigos son de 10 digitos');
+
+  // Una hoja rota no puede tumbar las demas.
+  ok(r.errores.length === 1, 'la hoja rota va a errores[] (' + r.errores.length + ')');
+  ok(/COD_ALUM/.test(r.errores[0].detalle), 'y dice por que: ' + r.errores[0].detalle);
+  ok(/Sheet4/.test(r.errores[0].detalle), 'nombrando la hoja');
+
+  // Sin duplicados entre hojas.
+  const todos = r.cursos.flatMap((c) => c.estudiantes.map((e) => e.cod_alum));
+  ok(new Set(todos).size === todos.length, 'sin codigos repetidos entre cursos');
+}
+
 console.log('\n[copias del parser]');
 {
   const sonda = readFileSync(new URL('../sonda-v4-xls.js', import.meta.url), 'utf8');

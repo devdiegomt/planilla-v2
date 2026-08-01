@@ -106,3 +106,38 @@ for i in range(5):
 wb.save('caso7_sin_codalum.xls')
 import os
 print('  caso7_sin_codalum.xls', os.path.getsize('caso7_sin_codalum.xls'), 'bytes')
+
+# --- caso 8: un solo archivo con VARIAS hojas, como Califica-451-02.xls -------
+# El export por profesor trae 19 hojas, una por curso. Se incluye una hoja rota
+# a proposito para verificar que no tumba a las demas.
+def hoja_curso(ws, cod_cur, cod_gru, n_alumnos, semilla, rota=False):
+    ws.write(0, 0, 1035)
+    ws.write(1, 5, 'GIMNASIO LOS ARRAYANES BILINGUE')
+    ws.write(10, 1, 'Curso: X (%s) Materia:Information Technology' % cod_cur)
+    if rota:
+        # Sin encabezado COD_ALUM: debe ir a errores, no romper el archivo.
+        ws.write(12, 1, 'OTRA COSA')
+        return
+    enc = ['COD_PER', 'COD_CUR', 'COD_GRU', 'COD_MAT', 'Nombre Materia',
+           'COD_ALUM', 'Nombre Alumno']
+    for c, h in enumerate(enc):
+        ws.write(12, c + 1, h)
+    for i in range(n_alumnos):
+        f = 13 + i
+        ws.write(f, 1, '02')
+        ws.write(f, 2, cod_cur)
+        ws.write(f, 3, cod_gru)
+        ws.write(f, 4, '2508')
+        ws.write(f, 5, 'Information Technology')
+        ws.write(f, 6, str(semilla + i * 3))
+        ws.write(f, 7, 'APELLIDO NOMBRE %d' % i)
+        for c in range(8, 18):
+            ws.write(f, c, (i * 7 + c) % 101)
+
+wb = xlwt.Workbook(encoding='utf-8')
+hoja_curso(wb.add_sheet('Sheet1'), '801', '08', 28, 2019034000)
+hoja_curso(wb.add_sheet('Sheet2'), '802', '08', 25, 2020011000)
+hoja_curso(wb.add_sheet('Sheet3'), '1101', '11', 31, 2017005000)
+hoja_curso(wb.add_sheet('Sheet4'), '', '', 0, 0, rota=True)
+wb.save('caso8_multihoja.xls')
+print('  caso8_multihoja.xls', os.path.getsize('caso8_multihoja.xls'), 'bytes')
