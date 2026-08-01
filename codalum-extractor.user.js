@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLA — Extractor de COD_ALUM (Classroom Live Web)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      2.0.0
+// @version      2.0.1
 // @description  Recorre los 19 cursos de ReporteCalificaMatriz.aspx y extrae, por curso, la lista de estudiantes con su COD_ALUM. Salida: un único JSON descargable.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/ReporteCalificaMatriz.aspx
@@ -735,7 +735,7 @@
     if (!lst) return { error: 'no encuentro el selector de profesor.' };
 
     const elegido = String(lst.value).trim();
-    const texto = lim(lst.selectedOptions[0]?.text);
+    const texto = normaliza(lst.selectedOptions[0]?.text);
     if (elegido === '-1') {
       return { error: `el selector está en "${texto}" (${lst.options.length} docentes). ` +
         'Elegí tu propio nombre: no voy a descargar las planillas de todo el colegio.' };
