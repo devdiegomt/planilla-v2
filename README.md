@@ -197,3 +197,8 @@ estructura de cada una, sin pulsar ningún control. Sirve para decidir qué más
 vale la pena automatizar.
 
 Ver [`README-inventario.md`](README-inventario.md).
+
+---
+
+Ver tambien [`CATALOGO.md`](CATALOGO.md): que datos se pueden sacar de la
+plataforma, de que pantalla y a que costo.
