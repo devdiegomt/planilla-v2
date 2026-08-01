@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLA — Inventario de la plataforma (solo lectura)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      1.0.0
+// @version      1.1.0
 // @description  Recorre las pantallas del menú y captura la estructura de cada una. No hace click en ningún control salvo navegar. Salida: un JSON con el mapa de la plataforma.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/*.aspx
@@ -65,12 +65,19 @@
    * cuenta como peligroso: nunca se asume que algo es inofensivo.
    */
   const PATRONES = [
-    ['escritura', /guardar|grabar|importar|elimin|borrar|actualiz|crear|nuevo|adicionar|agregar|enviar|aprobar|anular|rechaz|desmarcar|cambiar\s*clave|subir|cargar/i],
+    // Ojo con los límites de palabra: sin \b, "cargar" matchea dentro de
+    // "Descargar" y un botón de descarga —que es lectura pura— quedaba
+    // marcado como escritura.
+    ['escritura', /guardar|grabar|importar|elimin|borrar|actualiz|crear|nuevo|adicionar|agregar|enviar|aprobar|anular|rechaz|desmarcar|cambiar\s*clave|\bsubir\b|\bcargar\b/i],
     ['sesion', /salir|salida|cerrar\s*sesi|logout|inicio|home/i],
-    ['lectura', /exportar|consultar|buscar|filtrar|generar|imprimir|ver\b|detalle|descargar|reporte/i],
+    ['lectura', /exportar|descargar|consultar|buscar|filtrar|generar|imprimir|\bver\b|detalle|reporte/i],
   ];
 
   function clasificarBoton(b) {
+    // Ordenar una columna de GridView es un postback de solo lectura.
+    const destino = b.getAttribute('href') || b.getAttribute('onclick') || '';
+    if (/Sort\$/.test(destino)) return 'lectura';
+
     const texto = [b.getAttribute('title'), b.value, b.textContent, b.getAttribute('alt'),
       b.id, b.getAttribute('name')].map((s) => String(s || '')).join(' ');
     for (const [clase, re] of PATRONES) if (re.test(texto)) return clase;
@@ -136,15 +143,22 @@
 
   const OCULTO_SENSIBLE = /VIEWSTATE|EVENTVALIDATION/i;
 
+  // El panel del propio inventario no forma parte de la plataforma: si no se
+  // excluye, el mapa termina reportando sus botones como si fueran de la
+  // pantalla capturada.
+  const PANEL_ID = 'gla-inv';
+  const todos = (sel) => [...document.querySelectorAll(sel)].filter((e) => !e.closest('#' + PANEL_ID));
+
   function capturarPantalla() {
     const cap = {
       url: location.pathname,
-      titulo: document.title,
+      // No se llama "titulo" para no pisar el del menú al fusionar los objetos.
+      tituloDocumento: document.title,
       capturadoEn: new Date().toISOString(),
     };
 
     // --- Filtros y campos de entrada
-    cap.selects = [...document.querySelectorAll('select')].map((s) => ({
+    cap.selects = todos('select').map((s) => ({
       id: s.id || null,
       name: s.getAttribute('name') || null,
       autoPostBack: /__doPostBack/.test(s.getAttribute('onchange') || ''),
@@ -153,7 +167,7 @@
       muestra: [...s.options].slice(0, 6).map((o) => ({ v: o.value, t: lim(o.text).slice(0, 50) })),
     })).slice(0, 30);
 
-    cap.entradas = [...document.querySelectorAll('input[type=text], input[type=date], textarea')]
+    cap.entradas = todos('input[type=text], input[type=date], textarea')
       .filter((i) => i.offsetParent || i.getClientRects().length)
       .map((i) => ({
         id: i.id || null, name: i.getAttribute('name') || null,
@@ -164,8 +178,8 @@
       })).slice(0, 30);
 
     // --- Botones: clasificados, jamás tocados
-    const botones = [...document.querySelectorAll(
-      'input[type=submit], input[type=button], input[type=image], button, a[href*="__doPostBack"]')];
+    const botones = todos(
+      'input[type=submit], input[type=button], input[type=image], button, a[href*="__doPostBack"]');
     cap.botones = botones.map((b) => ({
       id: b.id || null,
       name: b.getAttribute('name') || null,
@@ -184,7 +198,7 @@
     };
 
     // --- Tablas
-    cap.tablas = [...document.querySelectorAll('table')]
+    cap.tablas = todos('table')
       .filter((t) => t.rows.length >= 2)
       .map((t) => {
         const enc = [...t.rows].find((f) => f.querySelector('th')) || t.rows[0];
@@ -204,7 +218,7 @@
     cap.tieneDatos = cap.tablas.some((t) => t.nFilas > 0);
 
     // --- Infraestructura
-    cap.ocultos = [...document.querySelectorAll('input[type=hidden]')]
+    cap.ocultos = todos('input[type=hidden]')
       .map((h) => ({
         name: h.getAttribute('name') || h.id,
         largo: (h.value || '').length,
@@ -216,7 +230,7 @@
     })).slice(0, 15);
 
     cap.ajax = !!(window.Sys?.WebForms?.PageRequestManager?.getInstance?.());
-    cap.iframes = [...document.querySelectorAll('iframe')].map((f) => lim(f.getAttribute('src')).slice(0, 80));
+    cap.iframes = todos('iframe').map((f) => lim(f.getAttribute('src')).slice(0, 80));
     cap.nAnchors = document.querySelectorAll('a').length;
 
     return cap;
@@ -236,6 +250,23 @@
       throw new Error('SessionEntrar no está definida en esta página; no improviso otra forma de navegar.');
     }
     window.SessionEntrar(pantalla.titulo, pantalla.id, pantalla.pageNum);
+  }
+
+  const hayMenu = () => typeof window.SessionEntrar === 'function';
+
+  /*
+   * No todas las pantallas comparten master page: ConsCalificaDocentesGen.aspx,
+   * por ejemplo, se titula "Mi Classroom - Principal", trae otro menú (btnMenu
+   * "MÓDULOS") y NO define SessionEntrar. Aterrizar ahí dejaba el recorrido sin
+   * forma de seguir.
+   *
+   * La salida es volver al inicio con una navegación GET normal —lo mismo que
+   * escribir la URL en la barra—, no pulsando el botón "Inicio" de la página.
+   * Un GET a la portada no envía el formulario ni puede escribir nada.
+   */
+  const PAGINA_INICIO = 'Default.aspx';
+  function irAlInicio() {
+    location.href = new URL(PAGINA_INICIO, location.href).href;
   }
 
   // ======================================================================
@@ -318,6 +349,21 @@
       Estado.guardar(estado);
       return continuar();
     }
+
+    /* ¿Esta pantalla expone el menú? Si no, volver al inicio antes de intentar
+       navegar. No consume un intento: no es que la pantalla objetivo falle, es
+       que estamos parados en un sitio desde el que no se puede salir. */
+    if (!hayMenu()) {
+      if (estado.volviendoAlInicio) {
+        return terminar('El menú tampoco aparece en el inicio; entrego lo capturado hasta acá.');
+      }
+      estado.volviendoAlInicio = true;
+      Estado.guardar(estado);
+      anotar(`${location.pathname} no expone el menú; vuelvo al inicio para continuar.`);
+      await dormir(ESPERA_MS);
+      return irAlInicio();
+    }
+    if (estado.volviendoAlInicio) { estado.volviendoAlInicio = false; Estado.guardar(estado); }
 
     // Todavía no estamos ahí: navegar (o rendirse con esta y seguir).
     if ((estado.intentos || 0) >= MAX_INTENTOS) {

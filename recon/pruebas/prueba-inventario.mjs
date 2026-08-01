@@ -63,8 +63,14 @@ function htmlPantalla(pageNum) {
       <input type="submit" id="ctl00_ContentPlaceHolder1_btnImportar" value="Importar">`;
   }
   return `<input type="submit" id="btnConsultar" value="Consultar">
+          <input type="submit" id="btnDescarga" value="Descargar Tabla">
+          <a href="javascript:__doPostBack('ctl00$gv','Sort$codigo')">Código</a>
           <table><thead><tr><th>Meta</th></tr></thead><tbody><tr><td>x</td></tr></tbody></table>`;
 }
+
+// Pantallas con otra master page: no definen SessionEntrar. Es el caso real de
+// ConsCalificaDocentesGen.aspx ("Mi Classroom - Principal", menú MÓDULOS).
+const SIN_MENU = new Set(['ConsCalificaDocentesGen.aspx']);
 
 function nuevaSesion({ sinTampermonkey = false } = {}) {
   const dom = new JSDOM(
@@ -108,23 +114,53 @@ function nuevaSesion({ sinTampermonkey = false } = {}) {
     }
   };
 
-  w.SessionEntrar = (titulo, id, pageNum) => {
-    navegaciones.push({ titulo, id, pageNum });
+  // Aterrizar en una pantalla de SIN_MENU quita SessionEntrar y el menú, igual
+  // que en la plataforma real.
+  const pintar = (pageNum) => {
     dom.reconfigure({ url: BASE + pageNum });
-    w.document.body.innerHTML = htmlMenu() +
-      '<input type="hidden" id="ctl00_hfTipUsu" value="2">' + htmlPantalla(pageNum);
+    const conMenu = !SIN_MENU.has(pageNum);
+    w.document.body.innerHTML = (conMenu ? htmlMenu() : '<div id="btnMenu">MÓDULOS</div>') +
+      '<input type="hidden" id="ctl00_hfTipUsu" value="2">' +
+      (pageNum === 'Default.aspx' ? '' : htmlPantalla(pageNum));
+    if (conMenu) w.SessionEntrar = navegar;
+    else delete w.SessionEntrar;
     pendienteRecarga = true;
+  };
+
+  /* Bloqueos de navegación que sobreviven a las recargas: cada "carga" vuelve a
+     asignar SessionEntrar, así que pisarla desde el test no alcanzaba. */
+  const bloqueos = new Map();   // id -> veces que aún debe fallar
+  const navegar = (titulo, id, pageNum) => {
+    const quedan = bloqueos.get(String(id)) || 0;
+    if (quedan > 0) { bloqueos.set(String(id), quedan - 1); return; }
+    navegaciones.push({ titulo, id, pageNum });
+    pintar(pageNum);
+  };
+  w.SessionEntrar = navegar;
+
+  /* jsdom no permite redefinir window.location, así que se inyecta un `location`
+     de mentira como parámetro al evaluar el script. Asignarle href simula la
+     navegación GET a la portada y de paso registra a dónde quiso ir. */
+  let vueltasAlInicio = 0;
+  let ultimoDestino = null;
+  w.__loc = {
+    get pathname() { return w.document.location.pathname; },
+    get href() { return w.document.location.href; },
+    set href(v) { ultimoDestino = String(v); vueltasAlInicio++; pintar('Default.aspx'); },
   };
 
   const evaluar = () => {
     w.document.getElementById('gla-inv')?.remove();
     vigilarBotones();
-    w.eval(FUENTE);
+    w.eval('(function(location){\n' + FUENTE + '\n})(window.__loc)');
   };
   evaluar();
 
   return {
     w, navegaciones, clicksEnPagina,
+    vueltasAlInicio: () => vueltasAlInicio,
+    ultimoDestino: () => ultimoDestino,
+    bloquear: (id, veces = Infinity) => bloqueos.set(String(id), veces),
     blob: () => blobDescargado,
     datos: () => JSON.parse(blobDescargado),
     q: (s) => w.document.querySelector(s),
@@ -250,9 +286,7 @@ console.log('\n[si una pantalla no abre, sigue con la siguiente]');
   // Caso A: falla una vez y el reintento la salva.
   {
     const s = nuevaSesion();
-    let n = 0;
-    const original = s.w.SessionEntrar;
-    s.w.SessionEntrar = (t, id, p) => { if (++n === 2) return; return original(t, id, p); };
+    s.bloquear('899', 1);            // falla una vez, el reintento la salva
     await s.correr();
     const datos = s.datos();
     ok(datos.capturadas === PANTALLAS.length, 'un fallo aislado se recupera con el reintento');
@@ -262,8 +296,7 @@ console.log('\n[si una pantalla no abre, sigue con la siguiente]');
   // Caso B: una pantalla que nunca abre. Tras los reintentos, error y seguir.
   {
     const s = nuevaSesion();
-    const original = s.w.SessionEntrar;
-    s.w.SessionEntrar = (t, id, p) => { if (String(id) === '899') return; return original(t, id, p); };
+    s.bloquear('899');               // no abre nunca
     await s.correr();
     const datos = s.datos();
     ok(datos.errores.length === 1, 'registra exactamente el fallo en errores[]');
@@ -274,6 +307,65 @@ console.log('\n[si una pantalla no abre, sigue con la siguiente]');
 }
 
 // ====================================================================== 7
+console.log('\n[pantalla sin menú: vuelve al inicio y sigue]');
+{
+  // ConsCalificaDocentesGen.aspx (id 24) usa otra master page y no define
+  // SessionEntrar. Antes, aterrizar ahí dejaba el recorrido atascado y las 19
+  // pantallas restantes se registraban con el mismo error.
+  const s = nuevaSesion();
+  await s.correr();
+  const datos = s.datos();
+
+  ok(datos.capturadas === PANTALLAS.length,
+    `captura las ${PANTALLAS.length} pese a pasar por una pantalla sin menú (capturó ${datos.capturadas})`);
+  ok(datos.errores.length === 0, 'sin errores: la falta de menú no es un fallo, es un rodeo');
+  ok(s.vueltasAlInicio() >= 1, 'volvió al inicio al menos una vez');
+  ok(/no expone el menú/.test(s.log()), 'lo explica en el log');
+  ok(/Default\.aspx$/.test(s.ultimoDestino() || ''), 'el único destino por URL es la portada: ' + s.ultimoDestino());
+  ok(s.clicksEnPagina.length === 0, 'ni siquiera para volver pulsó el botón Inicio de la página');
+}
+
+console.log('\n[clasificación: los falsos positivos importan]');
+{
+  const s = nuevaSesion();
+  await s.correr();
+  const p24 = s.datos().pantallas.find((p) => p.id === '24');
+
+  // "Descargar Tabla" contiene "cargar": sin \b quedaba marcado como escritura.
+  const descarga = p24.botones.find((b) => b.id === 'btnDescarga');
+  ok(descarga.clase === 'lectura', '"Descargar Tabla" es lectura, no escritura');
+  // Ordenar una columna de GridView es un postback de solo lectura.
+  const orden = p24.botones.find((b) => b.etiqueta === 'Código');
+  ok(orden.clase === 'lectura', 'los enlaces Sort$ de las columnas son lectura');
+  ok(p24.riesgo.escribe === false, 'y por eso la pantalla no queda marcada como que escribe');
+}
+
+console.log('\n[el inventario no se inventaría a sí mismo]');
+{
+  const s = nuevaSesion();
+  await s.correr();
+  const crudo = s.blob();
+  ok(!/gi-iniciar|gi-abortar/.test(crudo), 'los botones del propio panel no aparecen en el mapa');
+  ok(!/Iniciar recorrido/.test(crudo), 'ni su texto');
+}
+
+console.log('\n[el título del menú no lo pisa el <title> de la página]');
+{
+  const s = nuevaSesion();
+  await s.correr();
+  const p24 = s.datos().pantallas.find((p) => p.id === '24');
+  ok(p24.titulo === 'Notas parciales por meta', 'conserva el título del menú: ' + p24.titulo);
+  ok('tituloDocumento' in p24, 'y guarda aparte el <title> del documento');
+}
+
+console.log('\n[estructural: la única navegación por URL es la portada]');
+{
+  const asignaciones = [...CODIGO.matchAll(/location\.href\s*=\s*([^;]+);/g)].map((m) => m[1].trim());
+  ok(asignaciones.length === 1, 'hay una sola asignación a location.href: ' + JSON.stringify(asignaciones));
+  ok(/PAGINA_INICIO/.test(asignaciones[0] || ''), 'y su destino es la constante de la portada');
+  ok(/const PAGINA_INICIO = 'Default\.aspx'/.test(CODIGO), 'que apunta a Default.aspx');
+}
+
 console.log('\n[consola sin Tampermonkey: avisa]');
 {
   const s = nuevaSesion({ sinTampermonkey: true });

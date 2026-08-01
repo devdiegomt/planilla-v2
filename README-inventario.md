@@ -58,6 +58,20 @@ Si una pantalla no abre, lo registra en `errores[]` y sigue con la siguiente. Si
 la navegación no produce recarga —el servidor ignoró la petición— hay un vigía
 de 8 s que lo detecta; sin él el recorrido se colgaba en silencio.
 
+### Pantallas que no comparten el menú
+
+No todas usan la misma master page. `ConsCalificaDocentesGen.aspx` se titula
+*"Mi Classroom - Principal"*, trae otro menú (`btnMenu` "MÓDULOS") y **no define
+`SessionEntrar`**. Aterrizar ahí dejaba el recorrido sin forma de seguir: la
+primera versión capturaba esa pantalla y después registraba el mismo error en
+todas las restantes.
+
+Ahora, al detectar que la pantalla no expone el menú, vuelve a la portada con
+una navegación GET normal (`Default.aspx`) y sigue desde ahí. **No pulsa el
+botón "Inicio" de la página** — un GET a la portada no envía el formulario y no
+puede escribir nada. Hay una prueba estructural que verifica que esa sea la
+única asignación a `location.href` de todo el archivo.
+
 ## Qué sale
 
 ```json
