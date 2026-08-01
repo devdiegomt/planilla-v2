@@ -202,3 +202,13 @@ Ver [`README-inventario.md`](README-inventario.md).
 
 Ver tambien [`CATALOGO.md`](CATALOGO.md): que datos se pueden sacar de la
 plataforma, de que pantalla y a que costo.
+
+---
+
+## Parte 4: verificar antes de importar
+
+`verificar-planilla.mjs` compara la planilla descargada contra la que genera tu
+app y bloquea si cambio la identidad de las filas. Local, sin sesion, con
+codigo de salida usable como compuerta.
+
+Ver [`README-verificador.md`](README-verificador.md).

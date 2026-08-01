@@ -143,3 +143,63 @@ hoja_curso(wb.add_sheet('Sheet3'), '802', '08', 25, 2020011000)
 hoja_curso(wb.add_sheet('Sheet4'), '', '', 0, 0, rota=True)
 wb.save('caso8_multihoja.xls')
 print('  caso8_multihoja.xls', os.path.getsize('caso8_multihoja.xls'), 'bytes')
+
+# --- caso 9: variantes para probar el verificador de importacion --------------
+# Todas parten del mismo curso y cambian UNA cosa, para que cada prueba
+# verifique exactamente lo que dice verificar.
+def planilla(nombre, n=6, cambios=None, orden=None, quitar=None, agregar=False,
+             renombrar=None, sin_logro=False, curso='801'):
+    wb = xlwt.Workbook(encoding='utf-8')
+    ws = wb.add_sheet('Sheet1')
+    ws.write(1, 5, 'GIMNASIO LOS ARRAYANES BILINGUE')
+    enc = ['COD_PER', 'COD_CUR', 'COD_GRU', 'COD_MAT', 'Nombre Materia',
+           'COD_ALUM', 'Nombre Alumno']
+    for c, h in enumerate(enc):
+        ws.write(12, c + 1, h)
+    logros = ['log_21', 'log_22', 'log_27']
+    if sin_logro:
+        logros = logros[:2]
+    for i, lg in enumerate(logros):
+        ws.write(11, 8 + i, 'Descripcion de %s' % lg)
+        ws.write(12, 8 + i, lg)
+
+    filas = list(range(n))
+    if orden:
+        filas = orden
+    if quitar is not None:
+        filas = [x for x in filas if x != quitar]
+
+    f = 13
+    for i in filas:
+        ws.write(f, 1, '02'); ws.write(f, 2, curso); ws.write(f, 3, '08')
+        ws.write(f, 4, '2508'); ws.write(f, 5, 'Information Technology')
+        ws.write(f, 6, str(2019034000 + i))
+        nom = 'APELLIDO NOMBRE %d' % i
+        if renombrar is not None and i == renombrar:
+            nom = 'OTRO APELLIDO DISTINTO'
+        ws.write(f, 7, nom)
+        for j, lg in enumerate(logros):
+            v = (i * 10 + j * 5) % 101
+            if cambios and (i, lg) in cambios:
+                v = cambios[(i, lg)]
+            ws.write(f, 8 + j, v)
+        f += 1
+    if agregar:
+        ws.write(f, 1, '02'); ws.write(f, 2, curso); ws.write(f, 3, '08')
+        ws.write(f, 4, '2508'); ws.write(f, 5, 'Information Technology')
+        ws.write(f, 6, '2019099999'); ws.write(f, 7, 'ESTUDIANTE NUEVO')
+        for j, lg in enumerate(logros):
+            ws.write(f, 8 + j, 50)
+    wb.save(nombre)
+
+planilla('v_original.xls')
+planilla('v_igual.xls')
+planilla('v_notas.xls', cambios={(0, 'log_21'): 95, (2, 'log_27'): 88})
+planilla('v_nota_a_cero.xls', cambios={(3, 'log_22'): 0})
+planilla('v_reordenado.xls', orden=[0, 1, 3, 2, 4, 5])
+planilla('v_falta_uno.xls', quitar=4)
+planilla('v_sobra_uno.xls', agregar=True)
+planilla('v_renombrado.xls', renombrar=2)
+planilla('v_sin_logro.xls', sin_logro=True)
+planilla('v_otro_curso.xls', curso='802')
+print('  variantes del verificador generadas')

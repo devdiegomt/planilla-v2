@@ -4,7 +4,7 @@
   "type": "module",
   "description": "Userscripts de automatizacion para Classroom Live Web (GLA)",
   "scripts": {
-    "test": "python3 recon/pruebas/genera-xls-de-prueba.py >/dev/null && node recon/pruebas/prueba-parser.mjs && node recon/pruebas/prueba-extraccion.mjs && node recon/pruebas/prueba-extractor-rapido.mjs && node recon/pruebas/prueba-asistencia.mjs && node recon/pruebas/prueba-inventario.mjs"
+    "test": "python3 recon/pruebas/genera-xls-de-prueba.py >/dev/null && node recon/pruebas/prueba-parser.mjs && node recon/pruebas/prueba-extraccion.mjs && node recon/pruebas/prueba-extractor-rapido.mjs && node recon/pruebas/prueba-asistencia.mjs && node recon/pruebas/prueba-inventario.mjs && node recon/pruebas/prueba-verificador.mjs"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"
