@@ -69,12 +69,36 @@ herramienta alimenta esta directamente.
 Si tu app de captura guarda ese otro, el match falla en todas las filas y el
 script aborta antes de marcar nada.
 
+## Tiene que estar instalado en Tampermonkey
+
+Esto no es opcional para el flujo completo, y es la causa número uno de que
+"se cierre solo".
+
+Cada paso del filtro dispara un postback y **recarga la página entera**. Un
+script instalado se reinyecta en cada carga y retoma donde iba (por eso el
+estado vive en `sessionStorage`). Un script **pegado en la consola** de DevTools
+no: la consola no reinyecta nada, así que muere en el primer postback y la
+corrida queda a medias.
+
+La parte 1 sí funcionaba desde la consola porque usaba `fetch` y nunca navegaba.
+Esta no.
+
+El panel lo detecta: si no encuentra Tampermonkey muestra un aviso rojo, y el
+primer clic en *Flujo completo* avisa en vez de arrancar. Un segundo clic
+arranca igual — el script avisa, no prohíbe.
+
 ## Uso
 
+Hay dos modos.
+
+### Flujo completo — requiere Tampermonkey
+
 1. Entrar por el menú a *Asistencia > Asistencia diaria por asignatura*.
-2. Pegar el JSON en el panel y pulsar **Preparar (dry-run)**.
+2. Pegar el JSON en el panel y pulsar **Flujo completo (dry-run)**.
 3. El script recorre fecha → hora → curso → asignatura. Cada paso recarga la
-   página; el script continúa solo.
+   página; el script continúa solo. El panel muestra `recarga #N` y deja una
+   línea en el log en cada una: si esos números no avanzan, el script no está
+   sobreviviendo y el problema es de instalación.
 4. Al llegar a la tabla marca los radios **en pantalla** y se detiene, mostrando
    un resumen: curso, hora, asignatura, fecha y cuántos de cada estado.
 5. Revisá la pantalla. Si está bien, **Confirmar y guardar**. Si no,
@@ -82,13 +106,30 @@ script aborta antes de marcar nada.
 
 Solo entonces marca "Registro de asistencia" y pulsa Guardar.
 
-Una corrida es **un curso y una hora**. El script rechaza una entrada que traiga
-listas en `curso` u `hora`.
+### Solo marcar — funciona en cualquier parte
+
+Si preferís no depender de la instalación, o querés el control del filtro:
+
+1. Poné **a mano** fecha, hora, curso y asignatura, hasta ver la lista.
+2. Pegar el JSON y pulsar **Solo marcar**.
+3. El script no toca el filtro: verifica que la pantalla coincida con el JSON,
+   marca, y se detiene igual en el dry-run.
+4. **Confirmar y guardar**.
+
+En este modo la única navegación es el guardado final, así que no depende de
+sobrevivir a ninguna recarga — anda incluso pegado en la consola.
+
+La verificación del paso 3 no es un detalle: si dejaste el 802 en pantalla y el
+JSON habla del 801, aborta sin marcar nada. Compara los cuatro campos.
+
+Una corrida es **un curso y una hora**, en los dos modos. El script rechaza una
+entrada que traiga listas en `curso` u `hora`.
 
 ## Cuándo aborta sin tocar nada
 
 | Situación | Por qué |
 | --- | --- |
+| La pantalla no coincide con el JSON | Marcarle al 802 lo que era del 801 es el peor error posible acá. |
 | Un `cod_alum` no está en la tabla | Marcar el resto dejaría el registro a medias, sin que se note. |
 | La hora ya tiene estados registrados | No se pisa asistencia previa, tuya o de un coordinador. |
 | Un encabezado no coincide con el value de su radio | Ver abajo. |

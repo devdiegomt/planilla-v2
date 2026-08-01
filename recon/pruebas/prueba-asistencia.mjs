@@ -62,8 +62,9 @@ function htmlTabla(nFilas, opciones) {
 
 const CURSOS = ['801  ', '802  ', '901  ', '1001 ', '1101 '];
 
-function nuevaPagina({ nFilas = 28, fecha = '30/07/2026 12:24:41 p. m.', opcionesFila = {} } = {}) {
-  const opCursos = ['<option value="%">&lt;SELECCIONAR&gt;</option>']
+function nuevaPagina({ nFilas = 28, fecha = '30/07/2026 12:24:41 p. m.', opcionesFila = {},
+  sinTampermonkey = false } = {}) {
+  const opCursos =['<option value="%">&lt;SELECCIONAR&gt;</option>']
     .concat(CURSOS.map((c) => `<option value="${c}">CURSO ${c.trim()}</option>`)).join('');
   const opHoras = ['0:&lt;SELECCIONE&gt;', '1:Primera Hora', '2:Segunda Hora', '3:Tercera Hora',
     '4:Cuarta Hora', '5:Quinta Hora', '6:Sexta Hora', '9:Séptima Hora']
@@ -95,6 +96,10 @@ function nuevaPagina({ nFilas = 28, fecha = '30/07/2026 12:24:41 p. m.', opcion
   // dormir() usa setTimeout; acortarlo mantiene las pruebas en segundos.
   // La espera real entre postbacks se verifica aparte, sobre la constante.
   w.setTimeout = (fn) => { Promise.resolve().then(fn); return 0; };
+
+  // Tampermonkey expone GM_info incluso con @grant none. Sin él, el script
+  // asume que lo pegaron en la consola y bloquea el flujo completo.
+  if (!sinTampermonkey) w.GM_info = { script: { name: 'prueba', version: '0' } };
 
   w.__doPostBack = (control, arg) => {
     postbacks.push({ control, arg });
@@ -360,6 +365,79 @@ console.log('\n[abortar limpia el estado]');
 }
 
 // ===================================================================== 12
+console.log('\n[pegado en la consola: no muere en silencio]');
+{
+  const p = nuevaPagina({ sinTampermonkey: true });
+  ok(/No detecto Tampermonkey/.test(p.q('#ga-alerta').textContent), 'avisa que no está instalado');
+
+  // El flujo completo recarga en cada paso; sin userscript no hay quién retome.
+  p.q('#ga-entrada').value = JSON.stringify(ENTRADA_OK);
+  await p.q('#ga-preparar').onclick();
+  ok(p.postbacks.length === 0, 'el primer clic en flujo completo NO arranca');
+  ok(/no parece estar instalado/i.test(p.log()), 'explica por qué');
+  ok(/morir/i.test(p.q('#ga-preparar').textContent), 'el botón avisa que insistir lo va a matar');
+
+  await p.q('#ga-preparar').onclick();   // insistir sí arranca
+  ok(p.postbacks.length > 0, 'el segundo clic arranca igual: avisa, no prohíbe');
+}
+
+console.log('\n[modo "solo marcar": no depende de sobrevivir recargas]');
+{
+  const p = nuevaPagina({ sinTampermonkey: true });
+  // El profesor filtra a mano: eso deja la tabla en pantalla.
+  p.w.__doPostBack('ctl00$ContentPlaceHolder1$lstCursos', '');
+  p.w.__doPostBack('ctl00$ContentPlaceHolder1$lstMateria', '');
+  p.q('#ctl00_ContentPlaceHolder1_DropDownHora').value = '3';
+  p.q('#ctl00_ContentPlaceHolder1_lstCursos').value = '801  ';
+  p.q('#ctl00_ContentPlaceHolder1_lstMateria').value = '2508';
+  const antes = p.postbacks.length;
+
+  p.q('#ga-entrada').value = JSON.stringify(ENTRADA_OK);
+  await p.q('#ga-solomarcar').onclick();
+
+  ok(p.postbacks.length === antes, 'no tocó el filtro ni disparó un solo postback');
+  ok(p.marcados().length === 3, 'marcó los 3 estados igual');
+  ok(/Paso: CONFIRMAR/.test(p.q('#ga-paso').textContent), 'se detiene en CONFIRMAR');
+  ok(p.clicks.length === 0, 'no guardó por su cuenta');
+
+  await p.q('#ga-guardar').onclick();
+  ok(p.clicks.join() === 'guardar', 'guarda con la confirmación, sin haber recargado nunca');
+}
+
+console.log('\n[solo marcar: la pantalla tiene que coincidir con el JSON]');
+{
+  const p = nuevaPagina({ sinTampermonkey: true });
+  p.w.__doPostBack('ctl00$ContentPlaceHolder1$lstCursos', '');
+  p.w.__doPostBack('ctl00$ContentPlaceHolder1$lstMateria', '');
+  // El profesor dejó el 802 en pantalla pero el JSON habla del 801.
+  p.q('#ctl00_ContentPlaceHolder1_DropDownHora').value = '3';
+  p.q('#ctl00_ContentPlaceHolder1_lstCursos').value = '802  ';
+  p.q('#ctl00_ContentPlaceHolder1_lstMateria').value = '2508';
+
+  p.q('#ga-entrada').value = JSON.stringify(ENTRADA_OK);
+  await p.q('#ga-solomarcar').onclick();
+
+  ok(/ABORTADO/.test(p.log()) && /curso en pantalla/.test(p.log()),
+    'aborta: no le marca al 802 lo que era del 801');
+  ok(p.marcados().length === 0, 'no marcó nada');
+}
+{
+  const p = nuevaPagina({ sinTampermonkey: true });
+  p.q('#ga-entrada').value = JSON.stringify(ENTRADA_OK);
+  await p.q('#ga-solomarcar').onclick();
+  ok(/ABORTADO/.test(p.log()) && /a mano primero/.test(p.log()),
+    'sin tabla en pantalla, dice qué hacer en vez de fallar raro');
+}
+
+console.log('\n[la recarga se ve en el panel]');
+{
+  const p = nuevaPagina();
+  await p.preparar(ENTRADA_OK);
+  await p.avanzar();
+  ok(/recarga #\d/.test(p.q('#ga-paso').textContent), 'el panel muestra el número de recarga');
+  ok(/Retomo tras la recarga/.test(p.log()), 'cada recarga deja rastro en el log');
+}
+
 console.log('\n[reglas del encargo, sobre el código fuente]');
 {
   ok(/const ESPERA_MS = (\d+)/.test(FUENTE) && Number(RegExp.$1) >= 1500,

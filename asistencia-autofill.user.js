@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         GLA — Asistencia por asignatura (autofill)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      1.0.0
+// @version      1.1.0
 // @description  Rellena la asistencia diaria por asignatura a partir de un JSON. Dry-run por defecto: marca en pantalla y se detiene hasta que confirmes.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/AsistenciaAsignaturaAusenciaDia.aspx
 // @include      https://webapps3-classroomliveweb.com:2443/*/Seguro/AsistenciaAsignaturaAusenciaDia.aspx
+// @include      /^https?:\/\/[^/]*classroomliveweb\.com(:\d+)?\/.*AsistenciaAsignaturaAusenciaDia\.aspx/
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -53,7 +54,18 @@
   const CLAVE_ENTRADA = 'gla_asistencia_entrada_v1'; // plantilla, en localStorage
   const ESPERA_MS = 1500;      // mínimo entre postbacks
   const MAX_INTENTOS = 3;      // por paso
-  const MAX_CARGAS = 25;       // cortafuegos anti-bucle
+  const MAX_CARGAS = 15;       // recargas de página por corrida: cortafuegos anti-bucle
+
+  /*
+   * ¿Esto corre como userscript instalado, o alguien lo pegó en la consola?
+   * Importa muchísimo: cada paso del filtro recarga la página, y la consola no
+   * reinyecta nada. Pegado en la consola, el script muere en el primer postback
+   * y la corrida queda a medias sin ninguna señal.
+   *
+   * Tampermonkey define GM_info incluso con @grant none, así que sirve de
+   * discriminador. Si no está, avisamos en vez de morir en silencio.
+   */
+  const ES_USERSCRIPT = (typeof GM_info !== 'undefined');
 
   const P = 'ctl00_ContentPlaceHolder1_';
   const N = 'ctl00$ContentPlaceHolder1$';
@@ -298,12 +310,7 @@
 
   async function continuar() {
     if (!estado || !estado.activa) return;
-
-    estado.cargas = (estado.cargas || 0) + 1;
-    if (estado.cargas > MAX_CARGAS) return abortar(`demasiadas recargas (${estado.cargas}). Corto por seguridad.`);
-    persistir();
     refrescarPanel();
-
     const cfg = estado.cfg;
 
     switch (estado.paso) {
@@ -441,8 +448,40 @@
   // MARCAR — todas las validaciones ANTES de tocar un solo radio
   // ======================================================================
 
+  /*
+   * ¿La página muestra de verdad lo que dice el JSON? En el flujo completo el
+   * script mismo puso los filtros, pero verificarlo igual cuesta nada y atrapa
+   * que el servidor haya cambiado algo por su cuenta. En el modo "solo marcar"
+   * —donde filtraste vos a mano— es la única defensa contra marcarle al 802 lo
+   * que era del 801.
+   */
+  function desajusteDeFiltro(cfg) {
+    const fecha = el(ID.fecha), hora = el(ID.hora), curso = el(ID.curso), materia = el(ID.materia);
+    if (!fecha || !hora || !curso || !materia) return 'faltan controles del filtro en la página.';
+
+    const problemas = [];
+    const vistaFecha = fechaActual(fecha.value);
+    if (vistaFecha !== cfg.fecha) problemas.push(`fecha en pantalla ${vistaFecha}, el JSON dice ${cfg.fecha}`);
+
+    if (String(hora.value) !== valorHora(cfg.hora)) {
+      problemas.push(`hora en pantalla "${lim(hora.selectedOptions[0]?.text)}", el JSON dice ${cfg.hora}`);
+    }
+    if (String(curso.value).trim() !== String(cfg.curso).trim()) {
+      problemas.push(`curso en pantalla ${JSON.stringify(curso.value)}, el JSON dice ${cfg.curso}`);
+    }
+    const textoMateria = lim(materia.selectedOptions[0]?.text);
+    if (norm(textoMateria) !== norm(cfg.asignatura) && String(materia.value) !== String(cfg.asignatura)) {
+      problemas.push(`asignatura en pantalla "${textoMateria}", el JSON dice "${cfg.asignatura}"`);
+    }
+    return problemas.length ? problemas.join('; ') : null;
+  }
+
   function marcar() {
     const cfg = estado.cfg;
+
+    const desajuste = desajusteDeFiltro(cfg);
+    if (desajuste) return abortar('la página no muestra lo que dice el JSON → ' + desajuste + '. No marco nada.');
+
     const tabla = el(ID.tabla);
     if (!tabla) return abortar('la tabla de estudiantes no está en el DOM.');
 
@@ -676,6 +715,9 @@
     #gla-asis .log .err{color:#a3253c;font-weight:600}
     #gla-asis .log .ok{color:#1d6b3f}
     #gla-asis .nota{margin-top:8px;font-size:11px;color:#5b6981}
+    #gla-asis .alerta{margin-bottom:10px;padding:9px;border-radius:6px;background:#fdecec;
+      border:1px solid #e2a1a1;color:#7a2230;font-size:11.5px}
+    #gla-asis .alerta b{display:block;margin-bottom:3px}
   `;
 
   const panel = document.createElement('div');
@@ -683,6 +725,7 @@
   panel.innerHTML = `
     <header><span class="pt">Asistencia — autofill</span><span id="ga-min" style="cursor:pointer">—</span></header>
     <div class="cuerpo">
+      <div id="ga-alerta"></div>
       <div id="ga-entrada-caja">
         <label for="ga-entrada" style="font-size:11.5px;color:#5b6981">JSON de entrada</label>
         <textarea id="ga-entrada" spellcheck="false"></textarea>
@@ -690,13 +733,14 @@
       <div class="paso" id="ga-paso">Listo.</div>
       <div id="ga-resumen"></div>
       <div class="acciones">
-        <button class="prim" id="ga-preparar">Preparar (dry-run)</button>
+        <button class="prim" id="ga-preparar">Flujo completo (dry-run)</button>
+        <button class="prim" id="ga-solomarcar">Solo marcar</button>
         <button class="peligro" id="ga-guardar" disabled>Confirmar y guardar</button>
         <button class="sec" id="ga-abortar">Abortar</button>
         <button class="sec" id="ga-limpiar">Limpiar log</button>
       </div>
       <div class="log" id="ga-log"></div>
-      <div class="nota">Dry-run: marca en pantalla y se detiene. Nada se envía hasta que confirmes.</div>
+      <div class="nota" id="ga-nota">Dry-run: marca en pantalla y se detiene. Nada se envía hasta que confirmes.</div>
     </div>`;
 
   const estilo = document.createElement('style');
@@ -710,8 +754,10 @@
   const $resumen = panel.querySelector('#ga-resumen');
   const $log = panel.querySelector('#ga-log');
   const $preparar = panel.querySelector('#ga-preparar');
+  const $soloMarcar = panel.querySelector('#ga-solomarcar');
   const $guardar = panel.querySelector('#ga-guardar');
   const $abortar = panel.querySelector('#ga-abortar');
+  const $alerta = panel.querySelector('#ga-alerta');
   const $cuerpo = panel.querySelector('.cuerpo');
 
   panel.querySelector('#ga-min').onclick = () => {
@@ -729,10 +775,15 @@
   function refrescarPanel() {
     const activa = !!(estado && estado.activa);
     const paso = estado ? estado.paso : 'IDLE';
+    const recargas = estado && estado.cargas ? ` · recarga #${estado.cargas}` : '';
 
-    $paso.textContent = estado ? `Paso: ${paso}` : 'Listo.';
-    $entradaCaja.style.display = activa ? 'none' : '';
+    $paso.textContent = estado ? `Paso: ${paso}${recargas}` : 'Listo.';
+    // La caja de entrada se queda visible durante la corrida: verla llena tras
+    // una recarga es la señal más simple de que el script sobrevivió.
+    $entrada.readOnly = activa;
+    $entrada.style.opacity = activa ? '.6' : '';
     $preparar.disabled = activa;
+    $soloMarcar.disabled = activa;
     $guardar.disabled = !(estado && estado.paso === 'CONFIRMAR');
 
     $resumen.innerHTML = '';
@@ -751,21 +802,63 @@
 
   // --- Acciones -----------------------------------------------------------
 
-  $preparar.onclick = async () => {
+  /* Devuelve el cfg validado, o null habiendo ya reportado el error. */
+  function prepararCfg() {
     let cfg;
     try { cfg = validarEntrada($entrada.value); }
     catch (e) {
       estado = null;
       $log.innerHTML = '';
       pintarLinea({ t: new Date().toLocaleTimeString('es-CO'), msg: 'Entrada inválida: ' + e.message, clase: 'err' });
-      return;
+      return null;
     }
     try { localStorage.setItem(CLAVE_ENTRADA, $entrada.value); } catch (_) { /* nada */ }
-
     $log.innerHTML = '';
+    return cfg;
+  }
+
+  let avisadoDeConsola = false;
+
+  $preparar.onclick = async () => {
+    // El flujo completo recorre el filtro, y cada paso recarga la página. Sin
+    // userscript instalado eso es fatal: no hay quién retome tras la recarga.
+    if (!ES_USERSCRIPT && !avisadoDeConsola) {
+      avisadoDeConsola = true;
+      $preparar.textContent = 'Seguir igual (va a morir)';
+      pintarLinea({
+        t: new Date().toLocaleTimeString('es-CO'), clase: 'err',
+        msg: 'Esto no parece estar instalado en Tampermonkey. El flujo completo recarga la ' +
+          'página en cada paso del filtro y el script no volverá. Usá "Solo marcar", o instalalo.',
+      });
+      return;
+    }
+
+    const cfg = prepararCfg();
+    if (!cfg) return;
     estado = nuevoEstado(cfg);
     persistir();
     anotar(`Corrida: curso ${cfg.curso}, hora ${cfg.hora}, ${cfg.asignatura}, ${cfg.fecha}, ${cfg.marcas.length} marca(s).`);
+    refrescarPanel();
+    await continuar();
+  };
+
+  /*
+   * Modo "solo marcar": vos ya pusiste fecha, hora, curso y asignatura a mano,
+   * y el script se salta todo el filtro. Como no navega hasta el guardado, no
+   * depende de sobrevivir a ninguna recarga — funciona incluso pegado en la
+   * consola. Antes de marcar verifica que la pantalla coincida con el JSON.
+   */
+  $soloMarcar.onclick = async () => {
+    const cfg = prepararCfg();
+    if (!cfg) return;
+    estado = nuevoEstado(cfg);
+    estado.modo = 'SOLO_MARCAR';
+    estado.paso = 'MARCAR';
+    persistir();
+    anotar(`Solo marcar: curso ${cfg.curso}, hora ${cfg.hora}, ${cfg.asignatura}, ${cfg.fecha}, ${cfg.marcas.length} marca(s).`);
+    if (!el(ID.tabla)) {
+      return abortar('no hay tabla de estudiantes en pantalla. Poné hora, curso y asignatura a mano primero.');
+    }
     refrescarPanel();
     await continuar();
   };
@@ -805,11 +898,29 @@
     }, null, 2);
   }
 
+  // Aviso de entorno: es la causa número uno de "se cierra al recargar".
+  if (!ES_USERSCRIPT) {
+    $alerta.innerHTML =
+      '<div class="alerta"><b>No detecto Tampermonkey</b>' +
+      'Si pegaste esto en la consola, cada recarga lo borra y el flujo completo no puede continuar. ' +
+      '<b style="margin-top:5px">Usá "Solo marcar"</b>' +
+      'Poné hora, curso y asignatura a mano; el script marca y guarda sin recargar hasta el final.</div>';
+  }
+
   if (estado && estado.registro) estado.registro.forEach(pintarLinea);
-  refrescarPanel();
 
   if (estado && estado.activa) {
-    anotar('Retomo la corrida tras la recarga.');
-    continuar();
+    // Se cuenta una vez por carga real de la página, no por paso interno.
+    estado.cargas = (estado.cargas || 0) + 1;
+    persistir();
+    if (estado.cargas > MAX_CARGAS) {
+      abortar(`la página se recargó ${estado.cargas} veces en una sola corrida. Corto por seguridad.`);
+    } else {
+      anotar(`Retomo tras la recarga (#${estado.cargas}) en ${location.pathname}.`);
+      refrescarPanel();
+      continuar();
+    }
+  } else {
+    refrescarPanel();
   }
 })();
