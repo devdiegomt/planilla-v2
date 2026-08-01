@@ -383,12 +383,33 @@
   const form = document.forms.aspnetForm;
   if (!form) { console.error('No encuentro #aspnetForm'); return; }
 
+  /* Los filtros en pantalla, sean los que sean. Esta sonda sirve para
+     cualquier pantalla con un btnExportar: 1096 (planilla individual) y 1099
+     (planillas por profesor) usan el mismo nombre de botón. */
+  salida.filtrosEnPantalla = [...document.querySelectorAll('select')].map((s) => ({
+    id: s.id, valor: s.value, texto: lim(s.selectedOptions[0]?.text), nOpciones: s.options.length,
+  }));
+
   const lstCurso = document.getElementById('ctl00_ContentPlaceHolder1_lstCurso');
   if (lstCurso && lstCurso.value.trim() === '%') {
-    console.warn('⚠ Tienes "< TODOS >" seleccionado. Carga el 801 y vuelve a correr esto.');
+    console.warn('⚠ Tienes "< TODOS >" seleccionado en el curso. Carga uno y vuelve a correr esto.');
     return;
   }
-  salida.cursoExportado = lstCurso ? lim(lstCurso.selectedOptions[0]?.text) : null;
+
+  /* En ReporteCalificaMatrizProfesor.aspx el selector de profesor tiene 187
+     opciones y "-1" significa TODOS. Exportar las planillas de 187 docentes es
+     una acción muy distinta a exportar las tuyas, y no es algo que deba pasar
+     por descuido en una sonda de reconocimiento. */
+  const lstProfesor = document.getElementById('ctl00_ContentPlaceHolder1_lstProfesor');
+  if (lstProfesor && String(lstProfesor.value).trim() === '-1') {
+    console.warn('⚠ El selector de profesor está en "< TODOS >" (187 docentes). ' +
+      'Seleccioná tu propio nombre y volvé a correr esto.');
+    return;
+  }
+  if (lstProfesor) {
+    console.log(`%cExportando las planillas de: ${lim(lstProfesor.selectedOptions[0]?.text)}`,
+      'font-weight:bold');
+  }
 
   const OMITIR = new Set(['submit', 'button', 'reset', 'image', 'file']);
   const params = new URLSearchParams();
