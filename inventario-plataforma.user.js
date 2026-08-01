@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLA — Inventario de la plataforma (solo lectura)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      1.1.0
+// @version      1.2.0
 // @description  Recorre las pantallas del menú y captura la estructura de cada una. No hace click en ningún control salvo navegar. Salida: un JSON con el mapa de la plataforma.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/*.aspx
@@ -50,7 +50,8 @@
   const ESPERA_MS = 2000;       // entre navegaciones
   const ESPERA_SIN_NAVEGAR_MS = 8000; // si tras navegar no hay recarga, algo falló
   const MAX_INTENTOS = 2;       // por pantalla
-  const MAX_CARGAS = 120;       // cortafuegos anti-bucle
+  const MAX_CARGAS = 200;       // cortafuegos anti-bucle
+  const MAX_VUELTAS_INICIO = 3; // reintentos para recuperar el menú
   const MASCARA_NOMBRES = true;
 
   const ES_USERSCRIPT = (typeof GM_info !== 'undefined');
@@ -280,14 +281,41 @@
     console.log('[inventario]', msg);
   }
 
-  function terminar(motivo) {
-    anotar(motivo, 'ok');
+  /*
+   * `motivo` explica POR QUÉ terminó, y va dentro del JSON. Sin esto, una
+   * corrida cortada por una guarda se entregaba con errores:[] y no había forma
+   * de saber qué pasó sin mirar el log en pantalla.
+   */
+  function terminar(motivo, incompleta) {
+    anotar(motivo, incompleta ? 'err' : 'ok');
     if (!estado) return;
+
+    const faltantes = estado.pantallas.slice(estado.indice);
+    if (incompleta && faltantes.length) {
+      estado.errores.push({
+        id: faltantes[0].id, titulo: faltantes[0].titulo,
+        motivo: 'corrida interrumpida acá: ' + motivo,
+        sinVisitar: faltantes.map((p) => p.id),
+      });
+    }
+
     const salida = {
       generado: new Date().toISOString(),
+      completa: !incompleta && estado.indice >= estado.pantallas.length,
+      motivoFin: motivo,
+      // Contexto del final, para diagnosticar sin tener que pedir el log.
+      contextoFinal: {
+        url: location.pathname,
+        menuDisponible: hayMenu(),
+        recargas: estado.cargas || 0,
+        indice: estado.indice,
+        enPopup: !!window.opener,
+        enIframe: window.top !== window.self,
+      },
       usuario: { tipo: el('ctl00_hfTipUsu')?.value ?? null },
       totalPantallas: estado.pantallas.length,
       capturadas: estado.capturas.length,
+      sinVisitar: faltantes.map((p) => ({ id: p.id, titulo: p.titulo, pageNum: p.pageNum })),
       resumen: estado.capturas.map((c) => ({
         id: c.id, titulo: c.titulo, seccion: c.seccion, url: c.url,
         escribe: c.riesgo?.escribe ?? null,
@@ -296,6 +324,7 @@
       })),
       pantallas: estado.capturas,
       errores: estado.errores,
+      registro: estado.registro || [],
     };
     descargar(salida);
     estado.activa = false;
@@ -321,12 +350,15 @@
 
     estado.cargas = (estado.cargas || 0) + 1;
     if (estado.cargas > MAX_CARGAS) {
-      anotar(`demasiadas recargas (${estado.cargas}); corto y entrego lo que llevo.`, 'err');
-      return terminar('Cortado por seguridad.');
+      return terminar(`Demasiadas recargas (${estado.cargas}); corto por seguridad.`, true);
     }
 
     const objetivo = estado.pantallas[estado.indice];
     if (!objetivo) return terminar(`Listo: ${estado.capturas.length} pantallas capturadas.`);
+
+    // Una línea por carga: dónde estamos, si hay menú y qué se busca. Queda en
+    // el registro que ahora viaja dentro del JSON.
+    anotar(`carga #${estado.cargas} · ${location.pathname} · menú: ${hayMenu() ? 'sí' : 'NO'} · busco ${objetivo.id}`);
 
     // ¿Llegamos a donde queríamos? El menú da el nombre del .aspx esperado.
     const esperado = (objetivo.pageNum || '').toLowerCase();
@@ -351,19 +383,30 @@
     }
 
     /* ¿Esta pantalla expone el menú? Si no, volver al inicio antes de intentar
-       navegar. No consume un intento: no es que la pantalla objetivo falle, es
-       que estamos parados en un sitio desde el que no se puede salir. */
+       navegar. No consume un intento de la pantalla objetivo: no es que ella
+       falle, es que estamos parados en un sitio del que no se puede salir.
+
+       Hay al menos dos pantallas así, y no son iguales:
+         - ConsCalificaDocentesGen.aspx usa otra master page pero sigue siendo
+           una página normal del sitio.
+         - CalendarioN2.aspx no tiene ni un control ctl00_: sus hidden son
+           `hfUser`/`hfAlumno` pelados y trae un "CERRAR AGENDA". Parece pensada
+           para abrirse aparte.
+       Por eso se reintenta varias veces antes de rendirse, y al rendirse se
+       deja constancia de DÓNDE quedó. */
     if (!hayMenu()) {
-      if (estado.volviendoAlInicio) {
-        return terminar('El menú tampoco aparece en el inicio; entrego lo capturado hasta acá.');
-      }
-      estado.volviendoAlInicio = true;
+      estado.vueltasAlInicio = (estado.vueltasAlInicio || 0) + 1;
       Estado.guardar(estado);
-      anotar(`${location.pathname} no expone el menú; vuelvo al inicio para continuar.`);
+      if (estado.vueltasAlInicio > MAX_VUELTAS_INICIO) {
+        return terminar(
+          `Quedé en ${location.pathname}, que no expone el menú, y ${MAX_VUELTAS_INICIO} intentos ` +
+          `de volver a ${PAGINA_INICIO} no lo recuperaron. Abrí la portada a mano y dale Iniciar de nuevo.`, true);
+      }
+      anotar(`${location.pathname} no expone el menú; vuelvo al inicio (intento ${estado.vueltasAlInicio}).`);
       await dormir(ESPERA_MS);
       return irAlInicio();
     }
-    if (estado.volviendoAlInicio) { estado.volviendoAlInicio = false; Estado.guardar(estado); }
+    if (estado.vueltasAlInicio) { estado.vueltasAlInicio = 0; Estado.guardar(estado); }
 
     // Todavía no estamos ahí: navegar (o rendirse con esta y seguir).
     if ((estado.intentos || 0) >= MAX_INTENTOS) {

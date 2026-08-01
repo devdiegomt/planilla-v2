@@ -72,7 +72,7 @@ function htmlPantalla(pageNum) {
 // ConsCalificaDocentesGen.aspx ("Mi Classroom - Principal", menú MÓDULOS).
 const SIN_MENU = new Set(['ConsCalificaDocentesGen.aspx']);
 
-function nuevaSesion({ sinTampermonkey = false } = {}) {
+function nuevaSesion({ sinTampermonkey = false, inicioSinMenu = false } = {}) {
   const dom = new JSDOM(
     `<!doctype html><html><head></head><body>${htmlMenu()}
       <input type="hidden" id="ctl00_hfTipUsu" value="2">
@@ -118,7 +118,7 @@ function nuevaSesion({ sinTampermonkey = false } = {}) {
   // que en la plataforma real.
   const pintar = (pageNum) => {
     dom.reconfigure({ url: BASE + pageNum });
-    const conMenu = !SIN_MENU.has(pageNum);
+    const conMenu = !SIN_MENU.has(pageNum) && !(inicioSinMenu && pageNum === 'Default.aspx');
     w.document.body.innerHTML = (conMenu ? htmlMenu() : '<div id="btnMenu">MÓDULOS</div>') +
       '<input type="hidden" id="ctl00_hfTipUsu" value="2">' +
       (pageNum === 'Default.aspx' ? '' : htmlPantalla(pageNum));
@@ -364,6 +364,29 @@ console.log('\n[estructural: la única navegación por URL es la portada]');
   ok(asignaciones.length === 1, 'hay una sola asignación a location.href: ' + JSON.stringify(asignaciones));
   ok(/PAGINA_INICIO/.test(asignaciones[0] || ''), 'y su destino es la constante de la portada');
   ok(/const PAGINA_INICIO = 'Default\.aspx'/.test(CODIGO), 'que apunta a Default.aspx');
+}
+
+console.log('\n[si se rinde, el JSON explica por qué]');
+{
+  // Peor caso: quedamos en una pantalla sin menú y la portada tampoco lo trae.
+  // Antes esto entregaba errores:[] y el archivo no se explicaba solo.
+  const s = nuevaSesion({ inicioSinMenu: true });
+  await s.correr();
+  const datos = s.datos();
+
+  ok(datos.completa === false, 'marca la corrida como incompleta');
+  ok(/no expone el menú/.test(datos.motivoFin), 'motivoFin dice qué pasó: ' + datos.motivoFin);
+  ok(/Iniciar de nuevo/.test(datos.motivoFin), 'y qué hacer al respecto');
+  ok(datos.contextoFinal.menuDisponible === false, 'contextoFinal registra que no había menú');
+  ok(typeof datos.contextoFinal.url === 'string', 'y en qué URL quedó: ' + datos.contextoFinal.url);
+  ok(datos.errores.length >= 1, 'errores[] ya no viene vacío');
+  ok(Array.isArray(datos.errores[0].sinVisitar) && datos.errores[0].sinVisitar.length > 0,
+    'el error lista las pantallas que quedaron sin visitar');
+  ok(datos.sinVisitar.length > 0, 'y el JSON las repite arriba con título y pageNum');
+  ok(Array.isArray(datos.registro) && datos.registro.length > 0, 'el registro completo viaja en el JSON');
+  ok(datos.registro.some((l) => /carga #\d+ .* menú: NO/.test(l.msg)),
+    'con la traza por carga: dónde estaba y si había menú');
+  ok(s.vueltasAlInicio() >= 3, 'reintentó volver al inicio antes de rendirse (' + s.vueltasAlInicio() + ')');
 }
 
 console.log('\n[consola sin Tampermonkey: avisa]');
