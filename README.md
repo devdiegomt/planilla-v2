@@ -142,3 +142,13 @@ partir de un JSON, con dry-run obligatorio. Su `cod_alum` es el mismo código de
 matrícula que produce este extractor, así que la salida de uno alimenta al otro.
 
 Ver [`README-asistencia.md`](README-asistencia.md).
+
+---
+
+## Parte 3: inventario de la plataforma
+
+`inventario-plataforma.user.js` recorre las 22 pantallas del menú y captura la
+estructura de cada una, sin pulsar ningún control. Sirve para decidir qué más
+vale la pena automatizar.
+
+Ver [`README-inventario.md`](README-inventario.md).

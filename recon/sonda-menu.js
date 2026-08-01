@@ -46,15 +46,19 @@
     const m = RE_LLAMADA.exec(fuente);
     if (!m) continue;
 
-    // La sección es el encabezado del submenú que contiene al enlace.
+    /* La sección es el encabezado de la RAMA del menú, o sea el <li> de primer
+       nivel bajo #main-menu-navigation, no el hermano anterior del enlace.
+       (Una versión anterior tomaba el hermano y devolvía la sección corrida
+       una posición: el segundo ítem de cada rama heredaba el nombre del
+       primero.) */
     let seccion = null;
-    let n = elemento.parentElement;
-    for (let i = 0; i < 8 && n && !seccion; i++, n = n.parentElement) {
-      if (n.tagName === 'UL' || n.tagName === 'LI') {
-        const cab = n.previousElementSibling || n.parentElement?.querySelector(':scope > a, :scope > span');
-        const t = lim(cab?.textContent).slice(0, 60);
-        // Un encabezado útil no es el texto del propio enlace.
-        if (t && t !== lim(elemento.textContent)) seccion = t;
+    const raiz = document.getElementById('main-menu-navigation');
+    if (raiz) {
+      let n = elemento;
+      while (n && n.parentElement && n.parentElement !== raiz) n = n.parentElement;
+      if (n && n.parentElement === raiz) {
+        const cab = n.querySelector(':scope > a, :scope > span');
+        seccion = lim(cab?.textContent).slice(0, 60) || null;
       }
     }
 
