@@ -54,6 +54,8 @@ function htmlPantalla(pageNum) {
       <input type="image" id="ctl00_ContentPlaceHolder1_ImageButton1" title="Salir">
       <input type="image" id="ctl00_imgClave" title="Cambiar Clave">
       <a href="javascript:__doPostBack('ctl00$ContentPlaceHolder1$gvDatos','Select$0')">Desmarcar</a>
+      <div id="gla-asis"><button id="ga-guardar">Confirmar y guardar</button>
+        <button id="ga-preparar">Flujo completo (dry-run)</button></div>
       <table id="gvDatos"><thead><tr><th>Codigo</th><th>Nombre</th></tr></thead>
         <tbody><tr><td>2019034387</td><td>APELLIDO NOMBRE</td></tr></tbody></table>`;
   }
@@ -340,13 +342,21 @@ console.log('\n[clasificación: los falsos positivos importan]');
   ok(p24.riesgo.escribe === false, 'y por eso la pantalla no queda marcada como que escribe');
 }
 
-console.log('\n[el inventario no se inventaría a sí mismo]');
+console.log('\n[ni el inventario ni los otros userscripts se cuelan en el mapa]');
 {
   const s = nuevaSesion();
   await s.correr();
   const crudo = s.blob();
   ok(!/gi-iniciar|gi-abortar/.test(crudo), 'los botones del propio panel no aparecen en el mapa');
   ok(!/Iniciar recorrido/.test(crudo), 'ni su texto');
+  // Es normal tener los tres userscripts instalados a la vez. En una corrida
+  // real el "Confirmar y guardar" del autofill de asistencia se colo como
+  // boton de escritura de la pantalla de asistencia.
+  ok(!/Confirmar y guardar/.test(crudo), 'tampoco los botones del autofill de asistencia');
+  ok(!/ga-guardar|ga-preparar/.test(crudo), 'ni sus ids');
+  const p899 = s.datos().pantallas.find((p) => p.id === '899');
+  ok(!p899.riesgo.botonesDeEscritura.some((b) => /Confirmar/.test(b)),
+    'y no inflan la lista de botones de escritura de la pantalla');
 }
 
 console.log('\n[el título del menú no lo pisa el <title> de la página]');

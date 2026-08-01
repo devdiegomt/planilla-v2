@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLA — Inventario de la plataforma (solo lectura)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      1.2.0
+// @version      1.2.1
 // @description  Recorre las pantallas del menú y captura la estructura de cada una. No hace click en ningún control salvo navegar. Salida: un JSON con el mapa de la plataforma.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/*.aspx
@@ -144,11 +144,18 @@
 
   const OCULTO_SENSIBLE = /VIEWSTATE|EVENTVALIDATION/i;
 
-  // El panel del propio inventario no forma parte de la plataforma: si no se
-  // excluye, el mapa termina reportando sus botones como si fueran de la
-  // pantalla capturada.
+  /*
+   * Los paneles de estos userscripts no forman parte de la plataforma. Si no se
+   * excluyen, el mapa reporta sus botones como si fueran de la pantalla: en una
+   * corrida real, el "Confirmar y guardar" del autofill de asistencia apareció
+   * como botón de escritura de AsistenciaAsignaturaAusenciaDia.aspx.
+   *
+   * No alcanza con excluir el panel propio: hay que excluir todos los nuestros,
+   * porque es normal tenerlos instalados a la vez.
+   */
   const PANEL_ID = 'gla-inv';
-  const todos = (sel) => [...document.querySelectorAll(sel)].filter((e) => !e.closest('#' + PANEL_ID));
+  const PANELES_PROPIOS = '#gla-inv, #gla-asis, #gla-panel';
+  const todos = (sel) => [...document.querySelectorAll(sel)].filter((e) => !e.closest(PANELES_PROPIOS));
 
   function capturarPantalla() {
     const cap = {
