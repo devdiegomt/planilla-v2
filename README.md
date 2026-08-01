@@ -126,6 +126,28 @@ Cuatro chequeos, de más barato a más caro:
 Si los cuatro pasan en el 801, el resto de los cursos usa exactamente el mismo
 camino y las mismas columnas.
 
+### `cod_mat` cambia según el grado
+
+No es fijo. En una corrida real salió así:
+
+| Grupo | `cod_mat` |
+| --- | --- |
+| 08 | 2508 |
+| 09 | 2509 |
+| 10 | 2510 |
+| 11 | **3011** |
+
+Los tres primeros siguen el patrón `25` + grado; el de once no. Si algo en tu
+otra app asume que la materia es un código único, o que se puede derivar del
+grado, ahí se rompe.
+
+### El orden de los cursos
+
+Los dos modos entregan los cursos en el mismo orden (801…1104), así que los
+dos JSON se pueden comparar con un `diff` directo. El archivo agregado trae
+las hojas desordenadas —`801 802 803 804 1001 1002 1101 1102 1003 …`— y el
+script las reordena.
+
 ## Sobre el archivo que se parsea
 
 `ReporteCalificaMatriz.aspx` **no muestra la lista de estudiantes en pantalla**

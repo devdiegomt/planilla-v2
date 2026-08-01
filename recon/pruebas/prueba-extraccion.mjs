@@ -118,10 +118,12 @@ console.log('\n[un archivo con varias hojas: el export por profesor]');
 
   ok(r.nHojas === 4, 've las 4 hojas del archivo');
   ok(r.cursos.length === 3, 'extrae los 3 cursos con datos');
-  ok(r.cursos.map((c) => c.cod_cur).join() === '801,802,1101', 'cada hoja es un curso distinto');
-  ok(r.cursos[0].estudiantes.length === 28 && r.cursos[2].estudiantes.length === 31,
+  // extraerHojas respeta el orden del archivo; reordenar es tarea de la corrida.
+  ok(r.cursos.map((c) => c.cod_cur).join() === '801,1101,802', 'cada hoja es un curso distinto');
+  const porCur = Object.fromEntries(r.cursos.map((c) => [c.cod_cur, c]));
+  ok(porCur['801'].estudiantes.length === 28 && porCur['1101'].estudiantes.length === 31,
     'con su propio conteo de estudiantes');
-  ok(r.cursos[2].cod_gru === '11', 'y su propio cod_gru');
+  ok(porCur['1101'].cod_gru === '11', 'y su propio cod_gru');
   ok(r.cursos.every((c) => c.estudiantes.every((e) => /^\d{10}$/.test(e.cod_alum))),
     'todos los codigos son de 10 digitos');
 

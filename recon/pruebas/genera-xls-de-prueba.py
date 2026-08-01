@@ -135,9 +135,11 @@ def hoja_curso(ws, cod_cur, cod_gru, n_alumnos, semilla, rota=False):
             ws.write(f, c, (i * 7 + c) % 101)
 
 wb = xlwt.Workbook(encoding='utf-8')
+# Las hojas del archivo real NO vienen en orden de curso:
+# 801 802 803 804 1001 1002 1101 1102 1003 ... Se replica ese desorden.
 hoja_curso(wb.add_sheet('Sheet1'), '801', '08', 28, 2019034000)
-hoja_curso(wb.add_sheet('Sheet2'), '802', '08', 25, 2020011000)
-hoja_curso(wb.add_sheet('Sheet3'), '1101', '11', 31, 2017005000)
+hoja_curso(wb.add_sheet('Sheet2'), '1101', '11', 31, 2017005000)
+hoja_curso(wb.add_sheet('Sheet3'), '802', '08', 25, 2020011000)
 hoja_curso(wb.add_sheet('Sheet4'), '', '', 0, 0, rota=True)
 wb.save('caso8_multihoja.xls')
 print('  caso8_multihoja.xls', os.path.getsize('caso8_multihoja.xls'), 'bytes')

@@ -120,7 +120,10 @@ console.log('\n[una sola petición, y las 19 hojas]');
 
   const d = p.json();
   ok(d.cursos.length === 3, 'extrae los 3 cursos con datos del archivo');
-  ok(d.cursos.map((c) => c.cod_cur).join() === '801,802,1101', 'cada hoja es un curso');
+  // El archivo trae las hojas desordenadas (801, 1101, 802); la salida las
+  // ordena como el modo lento para que ambos JSON se puedan comparar.
+  ok(d.cursos.map((c) => c.cod_cur).join() === '801,802,1101',
+    'ordena los cursos pese al desorden de las hojas: ' + d.cursos.map((c) => c.cod_cur).join());
   ok(d.cursos[0].estudiantes.length === 28, 'con sus estudiantes');
   ok(d.errores.some((e) => /Sheet4/.test(e.detalle)), 'la hoja rota queda en errores[]');
   ok(/Califica-451-02\.xls/.test(p.log()), 'el log nombra el archivo recibido');

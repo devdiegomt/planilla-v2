@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLA — Extractor de COD_ALUM (Classroom Live Web)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      2.1.0
+// @version      2.1.1
 // @description  Recorre los 19 cursos de ReporteCalificaMatriz.aspx y extrae, por curso, la lista de estudiantes con su COD_ALUM. Salida: un único JSON descargable.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/ReporteCalificaMatriz.aspx
@@ -60,7 +60,7 @@
 
   // Se muestra en el panel: sin esto, diagnosticar "¿qué versión tenés
   // cargada?" obliga a preguntar. Una prueba verifica que coincida con @version.
-  const VERSION = '2.1.0';
+  const VERSION = '2.1.1';
 
   const CLAVE_ESTADO = 'gla_codalum_extractor_v1';
   const ESPERA_MIN_MS = 1500;   // entre cursos
@@ -944,6 +944,16 @@
         }
         log(`${c.cod_cur || c.hoja}: ${c.estudiantes.length} estudiantes`, 'ok');
       }
+
+      /* Las hojas del archivo agregado NO vienen en orden de curso: salen como
+         801 802 803 804 1001 1002 1101 1102 1003 … Se ordenan igual que el
+         modo lento para que los dos produzcan el mismo JSON y se puedan
+         comparar con un diff. Un curso inesperado va al final, no se pierde. */
+      const orden = (c) => {
+        const i = CURSOS_ESPERADOS.indexOf(c.cod_cur);
+        return i < 0 ? CURSOS_ESPERADOS.length : i;
+      };
+      cursos.sort((a, b) => orden(a) - orden(b) || String(a.cod_cur).localeCompare(String(b.cod_cur)));
 
       const salida = {
         generado: new Date().toISOString(),
