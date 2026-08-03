@@ -33,11 +33,33 @@ instala pero los scripts no corren nunca y no aparece ningún error.
 
 | Campo | Notas |
 | --- | --- |
-| `fecha` | `DD/MM/AAAA`. El script conserva la hora del campo tal como está, incluido el NBSP de `p.<NBSP>m.`; solo reemplaza la fecha. |
+| `fecha` | **Opcional, y lo normal es omitirla.** Ver abajo. |
 | `hora` | 1–6, o **7 para Séptima Hora** (internamente vale `9`; el script traduce). |
 | `curso` | Sin padding. El script busca la opción cuyo value recortado coincida, así que no depende de si son uno o dos espacios. |
 | `asignatura` | Se compara sin tildes ni mayúsculas contra el texto de la lista. Si hay ambigüedad, aborta. |
 | `marcas` | Puede ir vacía. Quien no esté en la lista se deja como esté. |
+
+### La fecha: omitila
+
+La plataforma ya trae la fecha de hoy, que es la correcta cuando registrás la
+clase del día. Si el JSON trae una fecha, el script la fija — y una fecha vieja
+arrastrada en una plantilla registra la asistencia en otro día sin que nada lo
+delate.
+
+Por eso **el valor por defecto es no tocarla**: omitila y se usa la de la
+pantalla, sin postback de más.
+
+El resumen del dry-run muestra siempre **la fecha que va a quedar registrada**,
+leída de la pantalla, y aclara si salió de la plataforma:
+
+```
+Curso 801 · hora 3 · Information Technology
+Fecha: 05/08/2026 (la de la plataforma)
+```
+
+Si necesitás poner al día un día pasado, mandala explícita como `DD/MM/AAAA` y
+se fija igual que antes. El script conserva la hora del campo tal como está,
+incluido el NBSP de `p.<NBSP>m.`.
 
 ### Los cuatro estados
 
@@ -94,7 +116,8 @@ Hay dos modos.
 ### Flujo completo — requiere Tampermonkey
 
 1. Entrar por el menú a *Asistencia > Asistencia diaria por asignatura*.
-2. Pegar el JSON en el panel y pulsar **Flujo completo (dry-run)**.
+2. Poner el JSON en el panel —pegándolo, con **cargar archivo…**, o
+   arrastrando el `.json` sobre el panel— y pulsar **Flujo completo (dry-run)**.
 3. El script recorre fecha → hora → curso → asignatura. Cada paso recarga la
    página; el script continúa solo. El panel muestra `recarga #N` y deja una
    línea en el log en cada una: si esos números no avanzan, el script no está
@@ -111,7 +134,7 @@ Solo entonces marca "Registro de asistencia" y pulsa Guardar.
 Si preferís no depender de la instalación, o querés el control del filtro:
 
 1. Poné **a mano** fecha, hora, curso y asignatura, hasta ver la lista.
-2. Pegar el JSON y pulsar **Solo marcar**.
+2. Poner el JSON —pegado, por archivo o arrastrándolo— y pulsar **Solo marcar**.
 3. El script no toca el filtro: verifica que la pantalla coincida con el JSON,
    marca, y se detiene igual en el dry-run.
 4. **Confirmar y guardar**.

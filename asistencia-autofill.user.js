@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GLA — Asistencia por asignatura (autofill)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      1.1.0
+// @version      1.2.0
 // @description  Rellena la asistencia diaria por asignatura a partir de un JSON. Dry-run por defecto: marca en pantalla y se detiene hasta que confirmes.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/AsistenciaAsignaturaAusenciaDia.aspx
@@ -244,8 +244,15 @@
     for (const campo of ['curso', 'hora']) {
       if (Array.isArray(cfg[campo])) throw new Error(`"${campo}" no puede ser una lista: una corrida es un solo curso y una sola hora.`);
     }
-    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(cfg.fecha || ''))) {
-      throw new Error('"fecha" debe venir como DD/MM/AAAA. Recibí: ' + JSON.stringify(cfg.fecha));
+    /* "fecha" es OPCIONAL, y omitirla es lo normal: la plataforma ya trae la
+       de hoy, que es la correcta cuando registrás la clase del día. Una fecha
+       vieja arrastrada en el JSON registra la asistencia en otro día sin que
+       nada lo delate, así que el valor por defecto es no tocarla. */
+    if (cfg.fecha === undefined || cfg.fecha === null || lim(cfg.fecha) === '') {
+      cfg.fecha = null;
+    } else if (!/^\d{2}\/\d{2}\/\d{4}$/.test(String(cfg.fecha))) {
+      throw new Error('"fecha", si la mandás, debe ser DD/MM/AAAA. Recibí: ' +
+        JSON.stringify(cfg.fecha) + '. Omitila para usar la de la plataforma.');
     }
     if (valorHora(cfg.hora) === null) throw new Error('"hora" debe ser 1-6 o 7 (Séptima Hora). Recibí: ' + JSON.stringify(cfg.hora));
     if (!lim(cfg.curso)) throw new Error('Falta "curso".');
@@ -318,6 +325,19 @@
       case 'SET_FECHA': {
         const campo = el(ID.fecha);
         if (!campo) return abortar('no encuentro el campo de fecha. ¿Es la pantalla correcta?');
+
+        // Sin fecha en el JSON: se usa la que la plataforma trae, sin postear.
+        if (cfg.fecha === null) {
+          const enPantalla = fechaActual(campo.value);
+          if (!enPantalla) {
+            return abortar(`no pude leer la fecha de la pantalla: ${JSON.stringify(campo.value)}. ` +
+              'Poné "fecha" en el JSON si querés fijarla vos.');
+          }
+          anotar(`Fecha: uso la de la plataforma → ${enPantalla}.`, 'ok');
+          pasarA('SET_HORA');
+          return continuar();
+        }
+
         if (fechaActual(campo.value) === cfg.fecha) {
           anotar(`Fecha ya en ${cfg.fecha}.`, 'ok');
           pasarA('SET_HORA');
@@ -460,8 +480,12 @@
     if (!fecha || !hora || !curso || !materia) return 'faltan controles del filtro en la página.';
 
     const problemas = [];
+    // Si el JSON no fija fecha, no hay nada que comparar: la de la pantalla es
+    // la buena por definición. Igual se lee para mostrarla en el resumen.
     const vistaFecha = fechaActual(fecha.value);
-    if (vistaFecha !== cfg.fecha) problemas.push(`fecha en pantalla ${vistaFecha}, el JSON dice ${cfg.fecha}`);
+    if (cfg.fecha && vistaFecha !== cfg.fecha) {
+      problemas.push(`fecha en pantalla ${vistaFecha}, el JSON dice ${cfg.fecha}`);
+    }
 
     if (String(hora.value) !== valorHora(cfg.hora)) {
       problemas.push(`hora en pantalla "${lim(hora.selectedOptions[0]?.text)}", el JSON dice ${cfg.hora}`);
@@ -586,8 +610,14 @@
     for (const a of aplicadas) cuenta[a.etiqueta] = (cuenta[a.etiqueta] || 0) + 1;
 
     estado.marcasAplicadas = aplicadas;
+    /* La fecha del resumen sale SIEMPRE de la pantalla, no del JSON: es la que
+       de verdad va a quedar registrada. Si el JSON no la fijó, además se dice,
+       porque registrar asistencia en el día equivocado es de los errores más
+       difíciles de detectar después. */
     estado.resumen = {
-      curso: cfg.curso, hora: cfg.hora, fecha: cfg.fecha,
+      curso: cfg.curso, hora: cfg.hora,
+      fecha: fechaActual(el(ID.fecha)?.value) || '(no pude leerla)',
+      fechaDeLaPlataforma: cfg.fecha === null,
       asignatura: lim(el(ID.materia)?.selectedOptions[0]?.text) || cfg.asignatura,
       totalFilas: filas.length, cuenta,
     };
@@ -727,7 +757,11 @@
     <div class="cuerpo">
       <div id="ga-alerta"></div>
       <div id="ga-entrada-caja">
-        <label for="ga-entrada" style="font-size:11.5px;color:#5b6981">JSON de entrada</label>
+        <label for="ga-entrada" style="font-size:11.5px;color:#5b6981">
+          JSON de entrada — <label for="ga-archivo" style="color:#2f6fb5;cursor:pointer;text-decoration:underline">cargar archivo…</label>
+          o arrastralo aquí
+        </label>
+        <input type="file" id="ga-archivo" accept=".json,application/json" style="display:none">
         <textarea id="ga-entrada" spellcheck="false"></textarea>
       </div>
       <div class="paso" id="ga-paso">Listo.</div>
@@ -759,6 +793,48 @@
   const $abortar = panel.querySelector('#ga-abortar');
   const $alerta = panel.querySelector('#ga-alerta');
   const $cuerpo = panel.querySelector('.cuerpo');
+
+  /* Cargar el JSON desde un archivo, por el selector o arrastrándolo sobre el
+     panel. Solo llena el textarea: la validación y el dry-run siguen siendo los
+     mismos, así que un archivo no puede saltarse ninguna comprobación. */
+  const $archivo = panel.querySelector('#ga-archivo');
+
+  function cargarArchivo(archivo) {
+    if (!archivo) return;
+    if (archivo.size > 2 * 1024 * 1024) {
+      pintarLinea({ t: new Date().toLocaleTimeString('es-CO'), clase: 'err',
+        msg: `"${archivo.name}" pesa ${Math.round(archivo.size / 1024)} KB; eso no es una lista de marcas.` });
+      return;
+    }
+    const lector = new FileReader();
+    lector.onload = () => {
+      $entrada.value = String(lector.result);
+      pintarLinea({ t: new Date().toLocaleTimeString('es-CO'),
+        msg: `Cargado ${archivo.name} (${archivo.size} bytes). Revisalo y pulsá Preparar.` });
+    };
+    lector.onerror = () => pintarLinea({ t: new Date().toLocaleTimeString('es-CO'),
+      clase: 'err', msg: 'No pude leer ' + archivo.name });
+    lector.readAsText(archivo, 'utf-8');
+  }
+
+  $archivo.onchange = () => { cargarArchivo($archivo.files[0]); $archivo.value = ''; };
+
+  for (const evento of ['dragenter', 'dragover']) {
+    panel.addEventListener(evento, (e) => {
+      if (![...e.dataTransfer.types].includes('Files')) return;
+      e.preventDefault();
+      panel.style.outline = '2px dashed #2f6fb5';
+    });
+  }
+  panel.addEventListener('dragleave', (e) => {
+    if (e.target === panel) panel.style.outline = '';
+  });
+  panel.addEventListener('drop', (e) => {
+    if (![...e.dataTransfer.types].includes('Files')) return;
+    e.preventDefault();
+    panel.style.outline = '';
+    cargarArchivo(e.dataTransfer.files[0]);
+  });
 
   panel.querySelector('#ga-min').onclick = () => {
     $cuerpo.style.display = $cuerpo.style.display === 'none' ? '' : 'none';
@@ -794,7 +870,9 @@
       div.className = 'resumen';
       div.innerHTML =
         `<b>${estado.paso === 'CONFIRMAR' ? 'Voy a guardar esto:' : 'Se guardó esto:'}</b>` +
-        `Curso ${r.curso} · hora ${r.hora} · ${r.asignatura} · ${r.fecha}<br>` +
+        `Curso ${r.curso} · hora ${r.hora} · ${r.asignatura}<br>` +
+        `<b style="margin:4px 0 0">Fecha: ${r.fecha}` +
+        `${r.fechaDeLaPlataforma ? ' <span style="font-weight:400">(la de la plataforma)</span>' : ''}</b>` +
         `${r.totalFilas} estudiantes en la lista.<ul>${items}</ul>`;
       $resumen.appendChild(div);
     }

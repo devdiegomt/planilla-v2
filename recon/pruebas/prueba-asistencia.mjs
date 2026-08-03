@@ -438,6 +438,71 @@ console.log('\n[la recarga se ve en el panel]');
   ok(/Retomo tras la recarga/.test(p.log()), 'cada recarga deja rastro en el log');
 }
 
+console.log('\n[la fecha es opcional: por defecto la de la plataforma]');
+{
+  const p = nuevaPagina({ fecha: '05/08/2026 07:15:00 a.\u00A0m.' });
+  const { fecha, ...sinFecha } = ENTRADA_OK;
+  await p.preparar(sinFecha);
+  await p.avanzar();
+
+  const postFecha = p.postbacks.filter((x) => x.control.endsWith('txtFecha'));
+  ok(postFecha.length === 0, 'no postea la fecha');
+  ok(p.q('#ctl00_ContentPlaceHolder1_txtFecha').value.startsWith('05/08/2026'),
+    'deja intacta la de la plataforma');
+  ok(/uso la de la plataforma → 05\/08\/2026/.test(p.log()), 'y lo dice en el log');
+  ok(/Paso: CONFIRMAR/.test(p.q('#ga-paso').textContent), 'llega igual al dry-run');
+
+  // La fecha real tiene que verse en el resumen: registrar en el dia
+  // equivocado es de los errores mas dificiles de detectar despues.
+  const resumen = p.q('#ga-resumen').textContent;
+  ok(/05\/08\/2026/.test(resumen), 'el resumen muestra la fecha que va a quedar: ' + resumen.slice(0, 90));
+  ok(/la de la plataforma/.test(resumen), 'y aclara de dónde salió');
+}
+{
+  // Si la mandás, se sigue respetando: sirve para poner al día un día pasado.
+  const p = nuevaPagina({ fecha: '05/08/2026 07:15:00 a.\u00A0m.' });
+  await p.preparar({ ...ENTRADA_OK, fecha: '30/07/2026' });
+  await p.avanzar();
+  ok(p.q('#ctl00_ContentPlaceHolder1_txtFecha').value.startsWith('30/07/2026'),
+    'una fecha explícita sigue fijándose');
+  ok(!/la de la plataforma/.test(p.q('#ga-resumen').textContent),
+    'y el resumen no dice que venga de la plataforma');
+}
+{
+  const p = nuevaPagina();
+  await p.preparar({ ...ENTRADA_OK, fecha: '2026-08-05' });
+  ok(/DD\/MM\/AAAA/.test(p.log()) && /Omitila/.test(p.log()),
+    'un formato inválido sigue rechazándose, y sugiere omitirla');
+}
+
+console.log('\n[cargar el JSON desde un archivo]');
+{
+  const p = nuevaPagina();
+  const contenido = JSON.stringify(ENTRADA_OK);
+  // Se simula el FileReader: en jsdom no hay archivos de verdad.
+  const w = p.w;
+  const original = w.FileReader;
+  // Ojo: el mock usa w.setTimeout, no el de Node. El de la ventana está
+  // acortado a un microtask, así que la espera de abajo es determinista.
+  w.FileReader = class {
+    readAsText() { this.result = contenido; w.setTimeout(() => this.onload && this.onload()); }
+  };
+  const entrada = p.q('#ga-archivo');
+  Object.defineProperty(entrada, 'files',
+    { value: [{ name: 'marcas.json', size: contenido.length }], configurable: true });
+  entrada.onchange();
+  await new Promise((r) => setImmediate(r));
+
+  ok(p.q('#ga-entrada').value === contenido, 'el archivo llena el textarea');
+  ok(/Cargado marcas\.json/.test(p.log()), 'y lo registra en el log');
+  w.FileReader = original;
+
+  // Un archivo no puede saltarse la validacion: es el mismo camino.
+  await p.preparar(p.q('#ga-entrada').value);
+  await p.avanzar();
+  ok(p.marcados().length === 3, 'y de ahí sigue el flujo normal, con dry-run');
+}
+
 console.log('\n[reglas del encargo, sobre el código fuente]');
 {
   ok(/const ESPERA_MS = (\d+)/.test(FUENTE) && Number(RegExp.$1) >= 1500,
