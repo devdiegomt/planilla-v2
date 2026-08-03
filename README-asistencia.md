@@ -111,9 +111,27 @@ arranca igual — el script avisa, no prohíbe.
 
 ## Uso
 
-Hay dos modos.
+Hay tres formas de arrancar.
 
-### Flujo completo — requiere Tampermonkey
+### Desde la portada — la más cómoda
+
+Al entrar a la plataforma, el panel ya aparece en `Default.aspx` como
+**lanzador**. Cargás el JSON y él te lleva.
+
+1. Iniciar sesión. El panel dice *Asistencia — lanzador*.
+2. Poner el JSON —pegado, con **cargar archivo…**, o arrastrándolo.
+3. **Cargar y llevarme a Asistencia**.
+4. Navega a la pantalla y sigue con el dry-run de siempre.
+
+El destino no está codificado: se busca en tu menú por el nombre del `.aspx`,
+así que el título y el id son los que la plataforma usa hoy. Si la pantalla no
+está en tu menú, lo dice en vez de mandar una petición que el servidor va a
+ignorar.
+
+Y el orden importa: **primero navega, después verifica**. Las comprobaciones
+necesitan la tabla de estudiantes, que no existe hasta llegar.
+
+### Flujo completo — desde la pantalla de asistencia
 
 1. Entrar por el menú a *Asistencia > Asistencia diaria por asignatura*.
 2. Poner el JSON en el panel —pegándolo, con **cargar archivo…**, o
@@ -130,6 +148,9 @@ Hay dos modos.
 Solo entonces marca "Registro de asistencia" y pulsa Guardar.
 
 ### Solo marcar — funciona en cualquier parte
+
+Este modo solo aparece en la pantalla de asistencia: en la portada no hay tabla
+que marcar.
 
 Si preferís no depender de la instalación, o querés el control del filtro:
 
@@ -159,6 +180,8 @@ entrada que traiga listas en `curso` u `hora`.
 | Un `cod_alum` repetido en `marcas` | Los estados son excluyentes: no puede tener dos. |
 | La lista de asignaturas queda vacía | Probablemente no tenés clase en ese curso a esa hora. |
 | Un paso no surte efecto tras 3 intentos | Antes que seguir a ciegas. |
+| Estás en otra pantalla y el paso no es el de navegar | Dice qué esperaba y dónde quedó, en vez de fallar con "no encuentro el campo de fecha". |
+| La pantalla de asistencia no está en tu menú | No se navega a un id inventado. |
 
 Todas esas comprobaciones corren **antes** de marcar el primer radio: o se
 marcan todas las filas o ninguna.

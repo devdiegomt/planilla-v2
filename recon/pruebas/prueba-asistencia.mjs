@@ -62,19 +62,21 @@ function htmlTabla(nFilas, opciones) {
 
 const CURSOS = ['801  ', '802  ', '901  ', '1001 ', '1101 '];
 
+/* El menu vive en la master page y es lo unico que la portada comparte con la
+   pantalla de asistencia. Es de donde el script saca titulo, id y pageNum. */
+const MENU = `<ul id="main-menu-navigation"><li><a href="#">Asistencia</a><ul>
+  <li><span onclick="SessionEntrar('Asistencia diaria por asignatura','899','AsistenciaAsignaturaAusenciaDia.aspx')">Asistencia diaria por asignatura</span></li>
+  </ul></li></ul>`;
+
 function nuevaPagina({ nFilas = 28, fecha = '30/07/2026 12:24:41 p. m.', opcionesFila = {},
-  sinTampermonkey = false } = {}) {
+  sinTampermonkey = false, enLaPortada = false, sinEnElMenu = false } = {}) {
   const opCursos =['<option value="%">&lt;SELECCIONAR&gt;</option>']
     .concat(CURSOS.map((c) => `<option value="${c}">CURSO ${c.trim()}</option>`)).join('');
   const opHoras = ['0:&lt;SELECCIONE&gt;', '1:Primera Hora', '2:Segunda Hora', '3:Tercera Hora',
     '4:Cuarta Hora', '5:Quinta Hora', '6:Sexta Hora', '9:Séptima Hora']
     .map((s) => { const [v, t] = s.split(':'); return `<option value="${v}">${t}</option>`; }).join('');
 
-  const dom = new JSDOM(`<!doctype html><html><head></head><body>
-    <form id="aspnetForm" action="./AsistenciaAsignaturaAusenciaDia.aspx" method="post">
-      <input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
-      <input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
-      <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="ZmFrZQ==">
+  const controlesAsistencia = enLaPortada ? '' : `
       <select id="ctl00_ContentPlaceHolder1_DropDownHora" name="ctl00$ContentPlaceHolder1$DropDownHora">${opHoras}</select>
       <input type="text" id="ctl00_ContentPlaceHolder1_txtFecha" name="ctl00$ContentPlaceHolder1$txtFecha" value="${fecha}">
       <select id="ctl00_ContentPlaceHolder1_lstCursos" name="ctl00$ContentPlaceHolder1$lstCursos">${opCursos}</select>
@@ -86,7 +88,15 @@ function nuevaPagina({ nFilas = 28, fecha = '30/07/2026 12:24:41 p. m.', opcion
       <div class="table-responsive"><div></div></div>
       <div id="myModal" class="modal fade" aria-hidden="true">
         <div class="modal-body"><span id="ctl00_ContentPlaceHolder1_lblModalBody">Información procesada satisfactoriamente</span></div>
-      </div>
+      </div>`;
+
+  const dom = new JSDOM(`<!doctype html><html><head></head><body>
+    ${sinEnElMenu ? '' : MENU}
+    <form id="aspnetForm" action="./AsistenciaAsignaturaAusenciaDia.aspx" method="post">
+      <input type="hidden" name="__EVENTTARGET" id="__EVENTTARGET" value="">
+      <input type="hidden" name="__EVENTARGUMENT" id="__EVENTARGUMENT" value="">
+      <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="ZmFrZQ==">
+      ${controlesAsistencia}
     </form></body></html>`, { runScripts: 'outside-only', url: 'https://ejemplo.test/x/Seguro/AsistenciaAsignaturaAusenciaDia.aspx' });
 
   const w = dom.window;
@@ -113,10 +123,35 @@ function nuevaPagina({ nFilas = 28, fecha = '30/07/2026 12:24:41 p. m.', opcion
       w.document.querySelector('.table-responsive').innerHTML = htmlTabla(nFilas, opcionesFila);
     }
   };
-  w.document.getElementById('ctl00_ContentPlaceHolder1_ImageButton3')
-    .addEventListener('click', () => clicks.push('guardar'));
-  w.document.getElementById('ctl00_ContentPlaceHolder1_ImageButton1')
-    .addEventListener('click', () => clicks.push('SALIR'));
+  // En la portada estos botones no existen todavía.
+  const vigilarBotones = () => {
+    w.document.getElementById('ctl00_ContentPlaceHolder1_ImageButton3')
+      ?.addEventListener('click', () => clicks.push('guardar'));
+    w.document.getElementById('ctl00_ContentPlaceHolder1_ImageButton1')
+      ?.addEventListener('click', () => clicks.push('SALIR'));
+  };
+  vigilarBotones();
+
+  /* SessionEntrar es la navegación del menú: acá "llegar" significa que la
+     página pase a tener los controles de asistencia. */
+  const navegaciones = [];
+  w.SessionEntrar = (titulo, id, pageNum) => {
+    navegaciones.push({ titulo, id, pageNum });
+    w.document.querySelector('#aspnetForm').insertAdjacentHTML('beforeend', `
+      <select id="ctl00_ContentPlaceHolder1_DropDownHora" name="ctl00$ContentPlaceHolder1$DropDownHora">${opHoras}</select>
+      <input type="text" id="ctl00_ContentPlaceHolder1_txtFecha" name="ctl00$ContentPlaceHolder1$txtFecha" value="${fecha}">
+      <select id="ctl00_ContentPlaceHolder1_lstCursos" name="ctl00$ContentPlaceHolder1$lstCursos">${opCursos}</select>
+      <select id="ctl00_ContentPlaceHolder1_lstMateria" name="ctl00$ContentPlaceHolder1$lstMateria">
+        <option value="%">&lt;SELECCIONAR&gt;</option></select>
+      <input type="checkbox" id="ctl00_ContentPlaceHolder1_chRegis" name="ctl00$ContentPlaceHolder1$chRegis">
+      <input type="image" id="ctl00_ContentPlaceHolder1_ImageButton1" name="ctl00$ContentPlaceHolder1$ImageButton1" title="Salir">
+      <input type="image" id="ctl00_ContentPlaceHolder1_ImageButton3" name="ctl00$ContentPlaceHolder1$ImageButton3" title="Guardar">
+      <div class="table-responsive"><div></div></div>
+      <div id="myModal" class="modal fade" aria-hidden="true">
+        <div class="modal-body"><span id="ctl00_ContentPlaceHolder1_lblModalBody">Información procesada satisfactoriamente</span></div>
+      </div>`);
+    vigilarBotones();
+  };
 
   const evaluar = () => {
     w.document.getElementById('gla-asis')?.remove();  // simula la recarga
@@ -126,7 +161,7 @@ function nuevaPagina({ nFilas = 28, fecha = '30/07/2026 12:24:41 p. m.', opcion
 
   const q = (sel) => w.document.querySelector(sel);
   return {
-    w, postbacks, clicks, evaluar, q,
+    w, postbacks, clicks, evaluar, q, navegaciones,
     log: () => [...w.document.querySelectorAll('#ga-log div')].map((d) => d.textContent).join('\n'),
     tabla: () => w.document.getElementById('gvDatos'),
     marcados: () => [...w.document.querySelectorAll('#gvDatos input[type=radio]')]
@@ -501,6 +536,65 @@ console.log('\n[cargar el JSON desde un archivo]');
   await p.preparar(p.q('#ga-entrada').value);
   await p.avanzar();
   ok(p.marcados().length === 3, 'y de ahí sigue el flujo normal, con dry-run');
+}
+
+console.log('\n[arrancar desde la portada: primero llevar, después chequear]');
+{
+  const p = nuevaPagina({ enLaPortada: true });
+
+  ok(/lanzador/.test(p.q('#gla-asis header .pt').textContent), 'el panel se presenta como lanzador');
+  ok(/llevarme a Asistencia/.test(p.q('#ga-preparar').textContent),
+    'y el botón lo dice: "' + p.q('#ga-preparar').textContent + '"');
+  ok(p.q('#ga-solomarcar').style.display === 'none',
+    'oculta "Solo marcar": en la portada no hay tabla que marcar');
+
+  await p.preparar(ENTRADA_OK);
+  ok(p.navegaciones.length === 1, 'navega una vez');
+  ok(p.navegaciones[0].pageNum === 'AsistenciaAsignaturaAusenciaDia.aspx', 'a la pantalla de asistencia');
+  ok(p.navegaciones[0].id === '899', 'con el id que sacó del menú, no uno inventado');
+  ok(p.navegaciones[0].titulo === 'Asistencia diaria por asignatura', 'y el título del menú');
+  ok(/Primero te llevo/.test(p.log()), 'lo anuncia antes de hacerlo');
+
+  // Y desde ahí sigue el flujo normal, con su dry-run.
+  await p.avanzar();
+  ok(p.marcados().length === 3, 'al llegar marca los 3 estados');
+  ok(/Paso: CONFIRMAR/.test(p.q('#ga-paso').textContent), 'y se detiene en el dry-run');
+  ok(p.clicks.length === 0, 'sin guardar por su cuenta');
+}
+
+console.log('\n[la pantalla de asistencia sigue igual que antes]');
+{
+  const p = nuevaPagina();
+  ok(!/lanzador/.test(p.q('#gla-asis header .pt').textContent), 'ahí el panel es el de siempre');
+  ok(p.q('#ga-solomarcar').style.display !== 'none', 'con "Solo marcar" disponible');
+  await p.preparar(ENTRADA_OK);
+  ok(p.navegaciones.length === 0, 'y no navega: ya está donde tiene que estar');
+}
+
+console.log('\n[si la pantalla no está en el menú, lo dice]');
+{
+  const p = nuevaPagina({ enLaPortada: true, sinEnElMenu: true });
+  await p.preparar(ENTRADA_OK);
+  ok(p.navegaciones.length === 0, 'no navega a ciegas');
+  ok(/no encuentro .*en tu menú/i.test(p.log()), 'explica por qué: ' +
+    (p.log().split('\n').find((l) => /menú/i.test(l)) || ''));
+}
+
+console.log('\n[aterrizar en la pantalla equivocada no falla de forma rara]');
+{
+  // Sin controles de asistencia y con el estado ya avanzado: antes esto
+  // terminaba en "no encuentro el campo de fecha", que no dice nada útil.
+  const p = nuevaPagina({ enLaPortada: true });
+  // Se siembra el estado a mano: si se usara preparar(), la navegación del
+  // fixture ya habría puesto los controles y la guarda nunca se activaría.
+  p.w.sessionStorage.setItem('gla_asistencia_estado_v1', JSON.stringify({
+    activa: true, paso: 'SET_HORA', cfg: { ...ENTRADA_OK, fecha: null },
+    intentos: {}, cargas: 0, registro: [], resumen: null,
+  }));
+  p.evaluar();
+  await new Promise((r) => setImmediate(r));
+  ok(/esperaba la pantalla de asistencia/.test(p.log()), 'dice qué esperaba y dónde está');
+  ok(/Entrá por el menú/.test(p.log()), 'y qué hacer');
 }
 
 console.log('\n[reglas del encargo, sobre el código fuente]');

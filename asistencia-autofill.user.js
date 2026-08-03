@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         GLA — Asistencia por asignatura (autofill)
 // @namespace    https://github.com/devdiegomt/planilla-v2
-// @version      1.2.0
+// @version      1.3.0
 // @description  Rellena la asistencia diaria por asignatura a partir de un JSON. Dry-run por defecto: marca en pantalla y se detiene hasta que confirmes.
 // @author       devdiegomt
 // @match        *://webapps3-classroomliveweb.com/*/Seguro/AsistenciaAsignaturaAusenciaDia.aspx
+// @match        *://webapps3-classroomliveweb.com/*/Seguro/Default.aspx
 // @include      https://webapps3-classroomliveweb.com:2443/*/Seguro/AsistenciaAsignaturaAusenciaDia.aspx
-// @include      /^https?:\/\/[^/]*classroomliveweb\.com(:\d+)?\/.*AsistenciaAsignaturaAusenciaDia\.aspx/
+// @include      /^https?:\/\/[^/]*classroomliveweb\.com(:\d+)?\/.*\/Seguro\/(AsistenciaAsignaturaAusenciaDia|Default)\.aspx/
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -66,6 +67,35 @@
    * discriminador. Si no está, avisamos en vez de morir en silencio.
    */
   const ES_USERSCRIPT = (typeof GM_info !== 'undefined');
+
+  /*
+   * El script corre en dos pantallas: la portada, donde solo hace de lanzador,
+   * y la de asistencia, donde hace todo lo demás. Cuál es cuál lo decide el
+   * DOM y no la URL — misma lección que en el extractor: una ruta inesperada
+   * no debe mandar al modo equivocado en silencio.
+   */
+  const PAGINA_ASISTENCIA = 'AsistenciaAsignaturaAusenciaDia.aspx';
+
+  const esPantallaAsistencia = () =>
+    !!document.getElementById('ctl00_ContentPlaceHolder1_DropDownHora') &&
+    !!document.getElementById('ctl00_ContentPlaceHolder1_lstCursos');
+
+  /* El destino se busca en el menú en vez de codificarlo: así el título y el id
+     son los que la plataforma usa hoy, y si la pantalla no está en tu menú se
+     dice, en vez de mandar una petición que el servidor va a ignorar. */
+  const RE_SESSION_ENTRAR =
+    /SessionEntrar\s*\(\s*(['"])([\s\S]*?)\1\s*,\s*(['"]?)([^,'"]*?)\3\s*,\s*(['"]?)([^)'"]*?)\5\s*\)/g;
+
+  function buscarEnMenu(pageNum) {
+    RE_SESSION_ENTRAR.lastIndex = 0;
+    const html = document.documentElement.innerHTML;
+    for (let m; (m = RE_SESSION_ENTRAR.exec(html));) {
+      if (String(m[6]).trim().toLowerCase() === pageNum.toLowerCase()) {
+        return { titulo: lim(m[2]), id: lim(m[4]), pageNum: lim(m[6]) };
+      }
+    }
+    return null;
+  }
 
   const P = 'ctl00_ContentPlaceHolder1_';
   const N = 'ctl00$ContentPlaceHolder1$';
@@ -146,9 +176,9 @@
 
   let estado = Estado.leer();
 
-  function nuevoEstado(cfg) {
+  function nuevoEstado(cfg, paso) {
     return {
-      activa: true, paso: 'SET_FECHA', cfg,
+      activa: true, paso: paso || 'SET_FECHA', cfg,
       intentos: {}, cargas: 0, registro: [], resumen: null, iniciado: Date.now(),
     };
   }
@@ -320,7 +350,43 @@
     refrescarPanel();
     const cfg = estado.cfg;
 
+    /* Salvo el paso de navegación, todo lo demás necesita estar en la pantalla
+       de asistencia. Si el servidor nos dejó en otro lado, se dice en vez de
+       fallar con "no encuentro el campo de fecha". */
+    if (estado.paso !== 'IR_A_ASISTENCIA' && !esPantallaAsistencia()) {
+      return abortar(`esperaba la pantalla de asistencia y estoy en ${location.pathname.split('/').pop()}. ` +
+        'Entrá por el menú a Asistencia > Asistencia diaria por asignatura.');
+    }
+
     switch (estado.paso) {
+      // ------------------------------------------------------------ NAVEGAR
+      /* Arrancar desde la portada: llevar a la pantalla de asistencia ANTES de
+         cualquier verificación. Las comprobaciones necesitan la tabla, que no
+         existe hasta llegar. */
+      case 'IR_A_ASISTENCIA': {
+        if (esPantallaAsistencia()) {
+          anotar('Ya en la pantalla de asistencia.', 'ok');
+          pasarA('SET_FECHA');
+          return continuar();
+        }
+        if (intentosDe('IR_A_ASISTENCIA') >= MAX_INTENTOS) {
+          return abortar(`no llegué a la pantalla de asistencia tras ${MAX_INTENTOS} intentos ` +
+            `(sigo en ${location.pathname.split('/').pop()}).`);
+        }
+        const destino = buscarEnMenu(PAGINA_ASISTENCIA);
+        if (!destino) {
+          return abortar('no encuentro "Asistencia diaria por asignatura" en tu menú. ' +
+            'Abrila a mano y usá el panel desde ahí.');
+        }
+        if (typeof window.SessionEntrar !== 'function') {
+          return abortar('esta página no expone SessionEntrar; no improviso otra forma de navegar. ' +
+            'Volvé al inicio y probá de nuevo.');
+        }
+        sumarIntento('IR_A_ASISTENCIA');
+        return dispararPostback(`ir a ${destino.titulo} (id ${destino.id})`,
+          () => window.SessionEntrar(destino.titulo, destino.id, destino.pageNum));
+      }
+
       // ---------------------------------------------------------------- FECHA
       case 'SET_FECHA': {
         const campo = el(ID.fecha);
@@ -913,9 +979,16 @@
 
     const cfg = prepararCfg();
     if (!cfg) return;
-    estado = nuevoEstado(cfg);
+
+    /* Desde la portada el primer paso es llegar a la pantalla; desde la pantalla
+       de asistencia se arranca directo en el filtro. En los dos casos la
+       máquina de estados es la misma de aquí en adelante. */
+    const desdeLaPortada = !esPantallaAsistencia();
+    estado = nuevoEstado(cfg, desdeLaPortada ? 'IR_A_ASISTENCIA' : 'SET_FECHA');
     persistir();
-    anotar(`Corrida: curso ${cfg.curso}, hora ${cfg.hora}, ${cfg.asignatura}, ${cfg.fecha}, ${cfg.marcas.length} marca(s).`);
+    anotar(`Corrida: curso ${cfg.curso}, hora ${cfg.hora}, ${cfg.asignatura}, ` +
+      `${cfg.fecha || 'fecha de la plataforma'}, ${cfg.marcas.length} marca(s).`);
+    if (desdeLaPortada) anotar('Primero te llevo a la pantalla de asistencia.');
     refrescarPanel();
     await continuar();
   };
@@ -977,6 +1050,16 @@
   }
 
   // Aviso de entorno: es la causa número uno de "se cierra al recargar".
+  /* En la portada el panel es solo un lanzador: no hay tabla que marcar ni
+     filtro que verificar hasta llegar a la otra pantalla. */
+  if (!esPantallaAsistencia()) {
+    panel.querySelector('header .pt').textContent = 'Asistencia — lanzador';
+    $preparar.textContent = 'Cargar y llevarme a Asistencia';
+    $soloMarcar.style.display = 'none';
+    panel.querySelector('#ga-nota').textContent =
+      'Desde acá te llevo a la pantalla de asistencia y sigo con el dry-run de siempre.';
+  }
+
   if (!ES_USERSCRIPT) {
     $alerta.innerHTML =
       '<div class="alerta"><b>No detecto Tampermonkey</b>' +
