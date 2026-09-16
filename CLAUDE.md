@@ -14,7 +14,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `inventario-plataforma.user.js` | Recorre las pantallas del menú y captura su estructura. | No |
 | `verificar-planilla.mjs` | Compara un Califica descargado contra el generado por la app. Código 0 = se puede subir, 1 = bloqueante. | No (local) |
 | `recon/sonda-csp.js` | Mide si la CSP de la plataforma deja correr un bookmarklet, para saber si Tampermonkey se puede reemplazar. | No |
-| `recon/hacer-bookmarklet.mjs` | Convierte esa sonda en un favorito arrastrable (`recon/sonda-csp-bookmarklet.html`). | No |
+| `recon/hacer-bookmarklet.mjs` | Convierte un script en un favorito arrastrable. Genera el de la sonda y el del autofill. | No |
 | `recon/` | Sondas de reconocimiento y pruebas. | — |
 
 READMEs por herramienta: `README.md`, `README-asistencia.md`, `README-inventario.md`,
@@ -42,23 +42,34 @@ READMEs por herramienta: `README.md`, `README-asistencia.md`, `README-inventario
 - Git: igual que en planilla-app. Nunca commitear sin que Diego lo pida; cuando lo pide,
   rama nueva, push, y él mergea el PR.
 
-## Reemplazar Tampermonkey (en evaluación)
+## Reemplazar Tampermonkey — confirmado que se puede
 
 Instalar Tampermonkey, pegar un script y activar "Permitir user scripts" es el
-muro más alto para que otro docente use esto — y muchos colegios bloquean
-extensiones por política. La alternativa es un **bookmarklet**: un favorito con
-código, que se instala arrastrándolo a la barra.
+muro más alto para que otro docente use esto, y muchos colegios bloquean
+extensiones. Un **bookmarklet** (favorito con código) se instala arrastrándolo.
 
-Si la CSP de la plataforma lo permite o no lo dice `recon/sonda-csp.js`, que se
-usa como bookmarklet: si el favorito corre, ya está respondida la primera
-pregunta y encima devuelve el diagnóstico. El HTML arrastrable está generado
-(`node recon/hacer-bookmarklet.mjs`) y `npm test` avisa si quedó desincronizado
-de la sonda. La
-pregunta no es una sola: el autofill pesa ~48 KB, así que un bookmarklet no
-puede llevarlo adentro sin más — tendría que cargarlo, y eso es lo primero que
-una CSP corta. La sonda mide por separado si corre código en línea, si corre
-`eval`, si deja traer un script de planilla-app y si deja hablar con ella, y
-distingue un bloqueo de CSP de un fallo de CORS (que sí se arregla).
+**Medido el 16/09/2026** con `recon/sonda-csp.js` en la pantalla de asistencia
+(`AsistenciaAsignaturaAusenciaDia.aspx`, Chrome 152):
+
+- **Esa página no tiene CSP.** Cero violaciones, ningún `<meta>`, y tanto
+  inyectar un `<script>` como `eval` funcionan.
+- **El bookmarklet corrió** — devolvió el JSON, que es la prueba.
+- Traer un script desde planilla-app falló, pero **no fue la CSP** (no hubo
+  violación): es CORS o la red del colegio. Por eso el favorito lleva el script
+  embebido, que además no depende de que la app esté accesible.
+
+**La limitación, que es de diseño y no se arregla:** el "flujo completo" recorre
+el filtro y cada paso hace un postback que recarga la página. Un userscript se
+reinyecta en cada carga; un favorito no. Por eso, como bookmarklet se elige hora,
+curso y asignatura a mano y se usa **"Solo marcar"**, que no navega hasta el
+guardado y verifica que la pantalla coincida con el JSON antes de marcar.
+
+El autofill es `@grant none` —no usa APIs de Tampermonkey— así que el mismo
+archivo sirve de userscript y de favorito. `GM_info` solo se usa para detectar
+cuál de los dos es y avisar; `npm test` comprueba que no se dependa de nada más.
+
+Los HTML arrastrables están generados (`node recon/hacer-bookmarklet.mjs`) y
+`npm test` avisa si quedaron desincronizados de su script.
 
 ## Datos de la plataforma que ya se confirmaron
 

@@ -65,6 +65,10 @@
    *
    * Tampermonkey define GM_info incluso con @grant none, así que sirve de
    * discriminador. Si no está, avisamos en vez de morir en silencio.
+   *
+   * Corriendo como bookmarklet esto es lo normal, no un error: el favorito no
+   * se reinyecta tras una recarga. "Solo marcar" no navega, así que funciona
+   * igual — y es el camino que hace innecesario Tampermonkey.
    */
   const ES_USERSCRIPT = (typeof GM_info !== 'undefined');
 
@@ -971,8 +975,10 @@
       $preparar.textContent = 'Seguir igual (va a morir)';
       pintarLinea({
         t: new Date().toLocaleTimeString('es-CO'), clase: 'err',
-        msg: 'Esto no parece estar instalado en Tampermonkey. El flujo completo recarga la ' +
-          'página en cada paso del filtro y el script no volverá. Usá "Solo marcar", o instalalo.',
+        msg: 'Esto no está corriendo como userscript (seguramente es el favorito o la ' +
+          'consola). El flujo completo recorre el filtro y cada paso recarga la página; ' +
+          'sin userscript el script no vuelve tras la recarga. Elegí hora, curso y ' +
+          'asignatura a mano y usá "Solo marcar", que no navega y hace lo mismo.',
       });
       return;
     }
