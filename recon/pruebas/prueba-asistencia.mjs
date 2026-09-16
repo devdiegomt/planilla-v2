@@ -409,7 +409,10 @@ console.log('\n[pegado en la consola: no muere en silencio]');
   p.q('#ga-entrada').value = JSON.stringify(ENTRADA_OK);
   await p.q('#ga-preparar').onclick();
   ok(p.postbacks.length === 0, 'el primer clic en flujo completo NO arranca');
-  ok(/no parece estar instalado/i.test(p.log()), 'explica por qué');
+  // Se comprueba el sentido y no la frase: tiene que decir POR QUÉ no sirve
+  // (la recarga) y A DÓNDE ir (Solo marcar), que es lo accionable.
+  ok(/recarga/i.test(p.log()), 'explica por qué: la página se recarga y el script no vuelve');
+  ok(/solo marcar/i.test(p.log()), 'y manda a "Solo marcar", que sí funciona sin userscript');
   ok(/morir/i.test(p.q('#ga-preparar').textContent), 'el botón avisa que insistir lo va a matar');
 
   await p.q('#ga-preparar').onclick();   // insistir sí arranca
