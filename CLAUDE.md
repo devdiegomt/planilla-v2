@@ -13,6 +13,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `asistencia-autofill.user.js` | Marca la asistencia diaria desde un JSON, con dry-run. | Solo si Diego pulsa Guardar |
 | `inventario-plataforma.user.js` | Recorre las pantallas del menú y captura su estructura. | No |
 | `verificar-planilla.mjs` | Compara un Califica descargado contra el generado por la app. Código 0 = se puede subir, 1 = bloqueante. | No (local) |
+| `recon/sonda-csp.js` | Mide si la CSP de la plataforma deja correr un bookmarklet, para saber si Tampermonkey se puede reemplazar. | No |
 | `recon/` | Sondas de reconocimiento y pruebas. | — |
 
 READMEs por herramienta: `README.md`, `README-asistencia.md`, `README-inventario.md`,
@@ -39,6 +40,20 @@ READMEs por herramienta: `README.md`, `README-asistencia.md`, `README-inventario
   (`pip install xlwt`) para generar los `.xls` de prueba.
 - Git: igual que en planilla-app. Nunca commitear sin que Diego lo pida; cuando lo pide,
   rama nueva, push, y él mergea el PR.
+
+## Reemplazar Tampermonkey (en evaluación)
+
+Instalar Tampermonkey, pegar un script y activar "Permitir user scripts" es el
+muro más alto para que otro docente use esto — y muchos colegios bloquean
+extensiones por política. La alternativa es un **bookmarklet**: un favorito con
+código, que se instala arrastrándolo a la barra.
+
+Si la CSP de la plataforma lo permite o no lo dice `recon/sonda-csp.js`. La
+pregunta no es una sola: el autofill pesa ~48 KB, así que un bookmarklet no
+puede llevarlo adentro sin más — tendría que cargarlo, y eso es lo primero que
+una CSP corta. La sonda mide por separado si corre código en línea, si corre
+`eval`, si deja traer un script de planilla-app y si deja hablar con ella, y
+distingue un bloqueo de CSP de un fallo de CORS (que sí se arregla).
 
 ## Datos de la plataforma que ya se confirmaron
 
