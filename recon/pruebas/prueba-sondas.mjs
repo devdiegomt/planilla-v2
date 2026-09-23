@@ -166,6 +166,38 @@ ok(/foto/i.test(rf.diezDigitos.descartados[0].motivo), 'que dice por qué');
 eq(rf.veredicto.apareceCodAlum, true,
    'y los códigos de verdad, los de la tabla, se siguen encontrando');
 
+// --- 3d. Con "< TODOS >" la pantalla no dibuja nada -----------------------
+// Corrida real: eligiendo "< TODOS >" gvDatos desaparece y solo quedan tablas
+// de maquetado. El veredicto señalaba una de 6 filas y UNA columna como "la
+// tabla de notas" y concluía que faltaba el COD_ALUM — diagnóstico equivocado
+// a partir de una tabla que no era.
+console.log('\nCon "< TODOS >" no hay tabla que leer');
+
+const todos = `<!doctype html><html><body>
+<form name="aspnetForm" id="aspnetForm" method="post" action="./ConsCalificaDocentesGen.aspx">
+  <select name="lstCurso" id="ctl00_ContentPlaceHolder1_lstCurso">
+    <option value="%" selected>&lt; TODOS &gt;</option>
+    <option value="801  ">OCHOCIENTOS UNO</option>
+  </select>
+  <!-- Maquetado: muchas filas, una sola columna. No es una tabla de datos. -->
+  <table><tr><td></td></tr><tr><td></td></tr><tr><td></td></tr>
+         <tr><td></td></tr><tr><td></td></tr><tr><td></td></tr></table>
+</form></body></html>`;
+
+const domTodos = new JSDOM(todos, {
+  url: 'https://ejemplo/arrayanes/2026/Seguro/ConsCalificaDocentesGen.aspx',
+  runScripts: 'outside-only',
+});
+domTodos.window.console = { log: () => {} };
+const rt = domTodos.window.eval(codigo);
+
+eq(rt.veredicto.hayTablaDeDatos, false,
+   'una tabla de 6 filas y 1 columna no es la tabla de notas');
+ok(/TODOS/.test(rt.veredicto.siguiente),
+   'y el consejo apunta al "< TODOS >", que es la causa real');
+ok(!/emparejar por nombre/.test(rt.veredicto.siguiente),
+   'en vez de deducir que falta el COD_ALUM de una tabla que no existe');
+
 // --- 4. Que la prueba de arriba sirva de algo ---------------------------
 // Un arnés que nunca falla no prueba nada. Acá se corre a propósito algo que
 // SÍ escribe, y lo que se comprueba es que la foto lo delate: tanto el campo

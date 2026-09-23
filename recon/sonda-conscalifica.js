@@ -253,7 +253,12 @@
   // Para no tener que leer 300 líneas de JSON antes de saber qué sigue.
 
   const conCodigo = hallazgos.length > 0;
-  const tablaGrande = salida.tablas.find((t) => t.nFilas >= 5) || null;
+  // Una tabla de datos tiene filas Y columnas. Pedir solo filas dejaba pasar
+  // las de maquetado: con `< TODOS >` seleccionado, donde la pantalla no
+  // dibuja nada, el veredicto señaló una de 6 filas y UNA columna como "la
+  // tabla de notas" y de ahí dedujo que faltaba el COD_ALUM. Diagnóstico
+  // equivocado a partir de una tabla que no era.
+  const tablaGrande = salida.tablas.find((t) => t.nFilas >= 5 && t.nColumnas >= 3) || null;
   const enNavegador = salida.descargasInterpretadas
     .some((d) => /navegador/.test(d.clase));
 
@@ -263,7 +268,9 @@
     apareceCodAlum: conCodigo,
     quePareceElBotonDeDescarga: salida.descargasInterpretadas,
     siguiente: !tablaGrande
-      ? 'La tabla no está cargada. Elegí curso/periodo hasta que se vean las notas y volvé a correr la sonda.'
+      ? (salida.selects.some((s) => /lstCurso/i.test(s.id || '') && s.seleccionado.value.trim() === '%')
+          ? 'Con "< TODOS >" la pantalla no dibuja la tabla: hay que elegir UN curso concreto. Elegilo y volvé a correr la sonda.'
+          : 'La tabla no está cargada. Elegí curso/periodo hasta que se vean las notas y volvé a correr la sonda.')
       : enNavegador
         ? 'Los datos ya están en el DOM: se puede leer de ahí, sin archivo.'
         : conCodigo

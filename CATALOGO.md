@@ -94,6 +94,12 @@ Con `recon/sonda-conscalifica.js` en la pantalla, curso cargado:
   19 cursos + `%`. Comparar siempre con `.trim()`.
 - **`lstMateria` sale filtrada por lo que dicta el curso**: con un 10° cargado
   ofrecía solo `2510`.
+- **`< TODOS >` NO sirve para recorrer** (medido el 23/09/2026). Con `%` en
+  `lstCurso` la pantalla deja de dibujar `gvDatos` —no quedan más que tablas de
+  maquetado— y `lstMateria` se queda sin opciones. Hay que ir curso por curso,
+  así que un recorrido completo son 19 cursos × los periodos que se pidan. Se
+  midió antes de programar el extractor justamente para saber si eran 4
+  postbacks o 76.
 - **"Descargar Tabla" es un `<input type="image">`**
   (`ctl00$ContentPlaceHolder1$btnDescarga`), o sea un submit: al postear manda
   `name.x` y `name.y`, no `name=valor`. Queda sin explorar a propósito —
