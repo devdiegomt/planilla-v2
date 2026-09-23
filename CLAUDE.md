@@ -38,8 +38,16 @@ READMEs por herramienta: `README.md`, `README-asistencia.md`, `README-inventario
 - El parser OLE2/BIFF8 vive embebido en `codalum-extractor.user.js`; las pruebas y el
   verificador lo **recortan en tiempo de ejecución** de ese archivo. No duplicarlo: si
   se cambia, correr las pruebas que detectan desincronización.
-- Pruebas: `npm install` (jsdom) y `npm test`. Requiere `python3` con `xlwt`
-  (`pip install xlwt`) para generar los `.xls` de prueba.
+- Pruebas: `npm install` (jsdom) y `npm test`. Requiere `python3` (o `python` en
+  Windows) con `xlwt` (`pip install xlwt`) para generar los `.xls` de prueba.
+  `npm test` corre `recon/pruebas/correr.mjs`, que no lleva lista: corre **todo**
+  `prueba-*.mjs` de esa carpeta, así que una prueba nueva entra sola por existir.
+  Antes era una cadena de `&&` con los archivos nombrados uno por uno, y eso se
+  quedó viejo sin avisar: la copia local de Windows —que había que reescribir
+  porque `python3` y `>/dev/null` no existen ahí— siguió con la lista de tres
+  commits atrás y dejó sin correr las pruebas del bookmarklet y de las sondas,
+  justo las que comprueban que los scripts no escriban en la plataforma. El
+  `npm test` decía "todo verde" igual.
 - Git: igual que en planilla-app. Nunca commitear sin que Diego lo pida; cuando lo pide,
   rama nueva, push, y él mergea el PR.
 
