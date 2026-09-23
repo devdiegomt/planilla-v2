@@ -109,6 +109,60 @@ const fila = r.tablas.find(t => t.id === 'gvNotas').muestraFilas[0];
 ok(!/ALGUIEN/.test(JSON.stringify(r)), 'ningún nombre sale entero');
 ok(fila.celdas[0] === '2019034387', 'y los códigos sí salen tal cual, que es lo que hay que ver');
 
+// --- 3b. Corrida en la pantalla equivocada ------------------------------
+// Diego la corrió en la portada y la sonda respondió "la tabla no está
+// cargada": cierto, pero manda a cargar un curso en una pantalla que ni
+// siquiera tiene selector de curso. Y tomó las entradas del menú por botones
+// de descarga, porque se llaman "Importar/exportar…".
+console.log('\nCorrida en la portada, no en la pantalla');
+
+const portada = `<!doctype html><html><body>
+<form name="aspnetForm" id="aspnetForm" method="post" action="./Default.aspx">
+  <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="${'x'.repeat(16772)}">
+  <img id="ctl00_FotoMenu" class="IcoFoto" src="../Fotos/1007718065.jpg">
+  <a id="1096" href="#">Importar/exportar planilla individual GLA</a>
+  <span onclick="SessionEntrar('Importar/exportar planilla individual GLA', '1096', 'ReporteCalificaMatriz.aspx');">Importar/exportar planilla individual GLA</span>
+</form></body></html>`;
+
+const domPortada = new JSDOM(portada, {
+  url: 'https://ejemplo/arrayanes/2026/Seguro/Default.aspx',
+  runScripts: 'outside-only',
+});
+domPortada.window.console = { log: () => {} };
+const rp = domPortada.window.eval(codigo);
+
+eq(rp.pantallaEquivocada, true, 'avisa que esta no es la pantalla');
+eq(rp.estoyEn, 'Default.aspx', 'y dice dónde está parada');
+ok(/Consultas/.test(rp.comoLlegar || ''), 'dice por dónde entrar, con la sección del menú');
+ok(/ConsCalificaDocentesGen/.test(rp.comoLlegar || ''), 'y nombra la pantalla');
+ok(rp.veredicto === undefined,
+   'y NO inventa un veredicto: mandar a "cargá un curso" en la portada es un consejo imposible');
+ok(!('descargas' in rp),
+   'ni toma las entradas del menú por botones de descarga');
+
+// --- 3c. El número de la foto no es un COD_ALUM ------------------------
+// La plataforma pone la foto del docente en el encabezado de TODAS las
+// pantallas, y ese número también tiene 10 dígitos. Sin descartarlo, la sonda
+// respondía "sí, hay COD_ALUM" en cualquier lado.
+console.log('\nLa foto del encabezado no es un código de estudiante');
+
+const conFoto = pagina.replace('<form ',
+  '<img id="ctl00_FotoMenu" class="IcoFoto" src="../Fotos/1007718065.jpg"><form ');
+const domFoto = new JSDOM(conFoto, {
+  url: 'https://ejemplo/arrayanes/2026/Seguro/ConsCalificaDocentesGen.aspx',
+  runScripts: 'outside-only',
+});
+domFoto.window.console = { log: () => {} };
+const rf = domFoto.window.eval(codigo);
+
+ok(!rf.diezDigitos.hallazgos.some(h => h.valor === '1007718065'),
+   'el número de la foto no cuenta como código');
+eq(rf.diezDigitos.descartados.map(d => d.valor), ['1007718065'],
+   'pero queda a la vista, descartado y con el motivo');
+ok(/foto/i.test(rf.diezDigitos.descartados[0].motivo), 'que dice por qué');
+eq(rf.veredicto.apareceCodAlum, true,
+   'y los códigos de verdad, los de la tabla, se siguen encontrando');
+
 // --- 4. Que la prueba de arriba sirva de algo ---------------------------
 // Un arnés que nunca falla no prueba nada. Acá se corre a propósito algo que
 // SÍ escribe, y lo que se comprueba es que la foto lo delate: tanto el campo

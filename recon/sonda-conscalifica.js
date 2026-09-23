@@ -58,6 +58,24 @@
     cuando: new Date().toISOString(),
   };
 
+  // --- 0. ¿Es esta la pantalla? --------------------------------------------
+  // Corrida en la portada, la sonda respondía "la tabla no está cargada", que
+  // es cierto y no sirve: manda a cargar un curso en una pantalla que ni
+  // siquiera tiene selector de curso. Peor, tomaba las entradas del menú por
+  // botones de descarga, porque se llaman "Importar/exportar…".
+  const PANTALLA = 'ConsCalificaDocentesGen.aspx';
+  if (!location.pathname.toLowerCase().includes(PANTALLA.toLowerCase())) {
+    salida.pantallaEquivocada = true;
+    salida.estoyEn = location.pathname.split('/').pop() || location.pathname;
+    salida.comoLlegar =
+      'Entrá por el menú a Consultas → "Notas parciales por meta" (abre ' +
+      PANTALLA + '), cargá un curso hasta ver las notas y volvé a correr la sonda.';
+    console.log('%c⚠ Esta no es la pantalla: estoy en ' + salida.estoyEn,
+                'color:#b45309;font-weight:bold');
+    console.log('%c→ ' + salida.comoLlegar, 'color:#0369a1;font-weight:bold');
+    return salida;
+  }
+
   // --- 1. Formulario y ocultos ---------------------------------------------
   // Esta pantalla usa OTRA master page que el resto (ver README-inventario),
   // así que no se puede dar por hecho que el form se llame igual.
@@ -194,6 +212,14 @@
     });
   }
 
+  // El número de las fotos TAMBIÉN tiene 10 dígitos y NO es el COD_ALUM (está
+  // en CATALOGO.md). La plataforma pone la foto del docente en el encabezado de
+  // todas las pantallas, así que sin descartarla la sonda respondía "sí, hay
+  // COD_ALUM" en cualquier lado, incluida la portada. No se esconde: va aparte
+  // con el motivo, para que se vea que se miró y se descartó a propósito.
+  const ES_FOTO = /\/Fotos\//i;
+  const descartados = [];
+
   for (const el of document.querySelectorAll('*')) {
     if (hallazgos.length >= 35) break;
     for (const a of el.attributes) {
@@ -201,17 +227,22 @@
       if (a.value.length > 300) continue;
       const m = RE_10.exec(a.value);
       if (!m) continue;
-      hallazgos.push({
+      const hallazgo = {
         donde: `atributo:${a.name}`,
         valor: m[0],
         contenedor: resumir(el),
         fragmento: limpiar(a.value).slice(0, 120),
-      });
+      };
+      if (ES_FOTO.test(a.value)) {
+        descartados.push({ ...hallazgo, motivo: 'es el número de la foto, no el COD_ALUM' });
+      } else {
+        hallazgos.push(hallazgo);
+      }
       break;
     }
   }
 
-  salida.diezDigitos = { total: hallazgos.length, hallazgos };
+  salida.diezDigitos = { total: hallazgos.length, hallazgos, descartados };
 
   // --- 6. Veredicto ---------------------------------------------------------
   // Para no tener que leer 300 líneas de JSON antes de saber qué sigue.
