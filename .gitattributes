@@ -1,0 +1,12 @@
+# Finales de línea: LF en el árbol de trabajo, también en Windows.
+#
+# No es cosmético. `recon/hacer-bookmarklet.mjs` mete un script ENTERO dentro
+# del HTML del favorito, codificado. Si Git convierte los .js a CRLF al hacer
+# checkout, lo que hay en disco deja de coincidir con lo que quedó codificado
+# en el HTML, y `npm test` reporta el favorito como desincronizado de su script
+# cuando en realidad nadie lo tocó. Pasó en Windows.
+*           text=auto eol=lf
+
+# Generados por las pruebas y no versionados, pero por si alguno se cuela:
+# tocarles un byte los rompe.
+*.xls       binary

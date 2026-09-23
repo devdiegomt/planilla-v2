@@ -13,7 +13,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { BOOKMARKLETS } from '../hacer-bookmarklet.mjs';
+import { BOOKMARKLETS, leerNormalizado } from '../hacer-bookmarklet.mjs';
 
 let fallos = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ✔ ' : '  ✗ FALLA ') + msg); if (!cond) fallos++; };
@@ -22,7 +22,9 @@ console.log('Bookmarklets');
 
 for (const b of BOOKMARKLETS) {
   console.log(`\n[${b.id}]`);
-  const fuente = readFileSync(b.fuente, 'utf8');
+  // Normalizado igual que al generar: si no, en Windows esta prueba falla
+  // sola por los CRLF del checkout, sin que nadie haya tocado el script.
+  const fuente = leerNormalizado(b.fuente);
   const html = readFileSync(b.salida, 'utf8');
 
   const m = html.match(/href="javascript:([^"]*)"/);

@@ -63,8 +63,21 @@ const BOOKMARKLETS = [
   },
 ];
 
+/*
+ * El script tal cual, pero con finales de línea LF.
+ *
+ * En Windows el checkout deja los .js con CRLF, y sin normalizar el favorito
+ * saldría distinto según en qué sistema se generó: el mismo script, dos HTML
+ * que no coinciden. Peor, la prueba que detecta un HTML desincronizado de su
+ * script empezaba a fallar sola, sin que nadie hubiera tocado nada. Dentro de
+ * un `javascript:` el CRLF además no aporta nada.
+ */
+function leerNormalizado(ruta) {
+  return readFileSync(ruta, 'utf8').replace(/\r\n/g, '\n');
+}
+
 function generar(b) {
-  const fuente = readFileSync(b.fuente, 'utf8');
+  const fuente = leerNormalizado(b.fuente);
   // `void 0` al final: sin eso el navegador ve que el script devuelve algo y
   // abandona la página para mostrar ese valor.
   const url = 'javascript:' + encodeURIComponent(fuente + '\nvoid 0;');
@@ -112,4 +125,4 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   for (const b of lista) generar(b);
 }
 
-export { BOOKMARKLETS };
+export { BOOKMARKLETS, leerNormalizado };
