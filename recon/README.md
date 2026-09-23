@@ -7,6 +7,7 @@ Este paso existe para **no adivinar selectores**.
 | `sonda-reportecalificamatriz.js` (v1) | no, lectura pura de DOM | selectores, botones, tablas, AJAX |
 | `sonda-v3-export.js` | **sí, un POST** (el mismo del botón Exportar) | formato del archivo exportado |
 | `sonda-v4-xls.js` | **sí, un POST** (idem) | parsea el `.xls` y vuelca el layout de la hoja |
+| `sonda-conscalifica.js` | no, lectura pura de DOM | otra pantalla: `ConsCalificaDocentesGen` (24), la de los cuatro periodos |
 
 ## Hallazgos confirmados
 
@@ -138,3 +139,47 @@ realmente se envía.
 
 El tercero es el que importa: es el bug clásico de los lectores de BIFF8. Las
 600 cadenas se comparan una por una contra lo que generó el script.
+
+## ConsCalificaDocentesGen (24) — el historial de los cuatro periodos
+
+Las planillas (1096, 1099) solo ofrecen el periodo en curso, así que esta es la
+única pantalla de la que puede salir el año completo. En `CATALOGO.md` figura
+como **por verificar**: se sabe que existe y que tiene "Descargar Tabla", pero
+nadie ha visto qué entrega ni con qué columnas. Escribir el extractor antes de
+saberlo sería inventar un formato, así que primero va la sonda.
+
+`sonda-conscalifica.js` es **lectura pura**: no envía nada, no dispara
+postbacks y **no pulsa "Descargar Tabla"** — lo inspecciona y dice qué clase de
+cosa es, que es lo que decide todo lo que sigue:
+
+| Lo que resulta ser el botón | Qué implica |
+| --- | --- |
+| lo arma el navegador (Blob) | las notas ya están en el DOM: no hace falta el archivo |
+| postback de ASP.NET | hay que reproducir el formulario, como en la v3 |
+| enlace a archivo | un `fetch` y a parsear |
+
+Cómo correrla:
+
+1. Abrí `ConsCalificaDocentesGen.aspx` y cargá un curso **hasta ver las notas**.
+   Con la tabla vacía la sonda lo dice y no sirve de nada.
+2. `F12` → Console → pegar el archivo entero → `Enter`.
+3. Se copia sola al portapapeles. El `veredicto` del final dice qué sigue.
+
+Los nombres salen enmascarados (`MASCARA_NOMBRES = true`) y del `__VIEWSTATE`
+solo va el tamaño. Los códigos numéricos sí salen tal cual: son justamente lo
+que hay que verificar.
+
+### Que sea de solo lectura, comprobado
+
+`prueba-sondas.mjs` no se fía de la cabecera: corre la sonda en un DOM falso
+(jsdom) que imita la pantalla y compara una foto del antes contra el después.
+La foto lleva el HTML **y el valor de cada control**, porque `input.value = 'x'`
+cambia el campo pero no el atributo — con el HTML solo, escribir un campo
+pasaba desapercibido.
+
+Y para que esa comprobación no sea decorativa, la prueba corre además dos
+sondas falsas que sí escriben y verifica que la foto las delate.
+
+```bash
+node recon/pruebas/prueba-sondas.mjs   # va también en `npm test`
+```

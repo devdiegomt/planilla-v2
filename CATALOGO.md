@@ -47,7 +47,7 @@ para nada, y el archivo no lo distingue por sí solo.
 
 | Dato | Pantalla | Salida | Estado |
 | --- | --- | --- | --- |
-| Notas por **periodo y corte** (1/2/3/Final × Único/C1/C2/Evaluación) | `ConsCalificaDocentesGen.aspx` (24) | Descargar Tabla | por verificar |
+| Notas por **periodo y corte** (1/2/3/Final × Único/C1/C2/Evaluación) | `ConsCalificaDocentesGen.aspx` (24) | Descargar Tabla | por verificar — sonda lista (`recon/sonda-conscalifica.js`) |
 | Actas de reunión — 31 filas ya cargadas sin filtrar | `ActaReunionGLA.aspx` (875) | Excel | por verificar |
 | Seguimiento convivencial por curso | `Seguimientoacademicoyconvivencial.aspx` (853) | Excel | por verificar |
 | Definición de actividades y sus porcentajes | `DefActividadDocentePorcMatriz.aspx` (831) | Excel | por verificar |
@@ -62,7 +62,10 @@ parseamos, así que cada una es un extractor corto, no un proyecto.
 
 **Limitación del periodo:** las pantallas de planillas (1096, 1099) solo
 ofrecen el periodo en curso (`02`). Para histórico, la única con los cuatro
-periodos es `ConsCalificaDocentesGen` (24).
+periodos es `ConsCalificaDocentesGen` (24). Lo que falta saber de ella
+—si las notas ya están en el DOM, qué entrega "Descargar Tabla" y si las filas
+traen COD_ALUM— lo responde `recon/sonda-conscalifica.js` corrida en la propia
+pantalla; hasta entonces, cualquier extractor sería un formato inventado.
 
 ## Lo que solo escribe
 
