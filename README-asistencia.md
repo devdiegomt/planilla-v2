@@ -87,7 +87,7 @@ tabla: 10 dígitos que empiezan por el año (`2019034387`, `2018044266`). Es el
 mismo que produce `codalum-extractor.user.js`, así que la salida de esa
 herramienta alimenta esta directamente.
 
-**No** es el número que nombra los archivos de foto (`../Fotos/1007718065.jpg`).
+**No** es el número que nombra los archivos de foto (`../Fotos/1099999999.jpg`).
 Si tu app de captura guarda ese otro, el match falla en todas las filas y el
 script aborta antes de marcar nada.
 

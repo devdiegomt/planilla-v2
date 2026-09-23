@@ -47,7 +47,7 @@ para nada, y el archivo no lo distingue por sí solo.
 
 | Dato | Pantalla | Salida | Estado |
 | --- | --- | --- | --- |
-| Notas por **periodo y corte** (1/2/3/Final × Único/C1/C2/Evaluación) | `ConsCalificaDocentesGen.aspx` (24) | Descargar Tabla | por verificar — sonda lista (`recon/sonda-conscalifica.js`) |
+| Notas por **periodo y corte** (1/2/3/Final × Único/C1/C2/Evaluación) | `ConsCalificaDocentesGen.aspx` (24) | **tabla en el DOM** (y botón Descargar Tabla) | **confirmado** — ver abajo |
 | Actas de reunión — 31 filas ya cargadas sin filtrar | `ActaReunionGLA.aspx` (875) | Excel | por verificar |
 | Seguimiento convivencial por curso | `Seguimientoacademicoyconvivencial.aspx` (853) | Excel | por verificar |
 | Definición de actividades y sus porcentajes | `DefActividadDocentePorcMatriz.aspx` (831) | Excel | por verificar |
@@ -61,11 +61,49 @@ Casi todas las de "Excel" deberían salir en el mismo formato OLE2/BIFF8 que ya
 parseamos, así que cada una es un extractor corto, no un proyecto.
 
 **Limitación del periodo:** las pantallas de planillas (1096, 1099) solo
-ofrecen el periodo en curso (`02`). Para histórico, la única con los cuatro
-periodos es `ConsCalificaDocentesGen` (24). Lo que falta saber de ella
-—si las notas ya están en el DOM, qué entrega "Descargar Tabla" y si las filas
-traen COD_ALUM— lo responde `recon/sonda-conscalifica.js` corrida en la propia
-pantalla; hasta entonces, cualquier extractor sería un formato inventado.
+ofrecen el periodo en curso (`02`). Para histórico, la única con los periodos
+anteriores es `ConsCalificaDocentesGen` (24).
+
+### ConsCalificaDocentesGen (24), medido el 23/09/2026
+
+Con `recon/sonda-conscalifica.js` en la pantalla, curso cargado:
+
+- **Las notas ya están en el DOM.** El archivo del botón no hace falta:
+  `#ctl00_ContentPlaceHolder1_gvDatos`, una fila por estudiante, y la **primera
+  columna es el COD_ALUM** en texto plano. Se lee como el extractor de códigos
+  lee el menú, sin parsear un `.xls`.
+- **Once columnas**, y las cinco categorías salen con el nombre completo:
+
+  `Código · Nombre · CONOCIMIENTO · MÉTODO · USO · COMUNICACIÓN ·
+  EVA. TRIMESTRAL · EVA. BIMESTRAL · Definitiva · fallas · retardos`
+
+  Son las K/M/U/C/E de la app más la definitiva. Y de yapa **fallas y
+  retardos**, que ninguna otra pantalla entrega consolidados.
+- **Los decimales van con coma** (`95,00`): hay que cambiarla por punto antes
+  de convertir a número.
+- **No son cuatro periodos, son tres y el final.** `lstPeriodo` ofrece
+  `01` PRIMERO, `02` SEGUNDO, `03` TERCERO y `05` FINAL — no hay `04`, y `%`
+  es "< Seleccione >". Lo de "los cuatro periodos" era una suposición que la
+  pantalla desmiente.
+- **`lstCorte` no usa los textos como valores:** `1` ÚNICO, `2` Corte 1,
+  `3` Corte 2, `4` Evaluación.
+- **Los cuatro filtros son AutoPostBack** (curso, materia, periodo, corte), así
+  que recorrerlos recarga la página en cada paso: esto va como userscript, no
+  como bookmarklet — la misma limitación que la asistencia.
+- **`lstCurso` repite el padding a 5 caracteres** (`"801  "`, `"1001 "`) y trae
+  19 cursos + `%`. Comparar siempre con `.trim()`.
+- **`lstMateria` sale filtrada por lo que dicta el curso**: con un 10° cargado
+  ofrecía solo `2510`.
+- **`< TODOS >` NO sirve para recorrer** (medido el 23/09/2026). Con `%` en
+  `lstCurso` la pantalla deja de dibujar `gvDatos` —no quedan más que tablas de
+  maquetado— y `lstMateria` se queda sin opciones. Hay que ir curso por curso,
+  así que un recorrido completo son 19 cursos × los periodos que se pidan. Se
+  midió antes de programar el extractor justamente para saber si eran 4
+  postbacks o 76.
+- **"Descargar Tabla" es un `<input type="image">`**
+  (`ctl00$ContentPlaceHolder1$btnDescarga`), o sea un submit: al postear manda
+  `name.x` y `name.y`, no `name=valor`. Queda sin explorar a propósito —
+  teniendo la tabla en el DOM, no hace falta.
 
 ## Lo que solo escribe
 

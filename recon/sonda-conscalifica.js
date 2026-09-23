@@ -58,6 +58,24 @@
     cuando: new Date().toISOString(),
   };
 
+  // --- 0. ¿Es esta la pantalla? --------------------------------------------
+  // Corrida en la portada, la sonda respondía "la tabla no está cargada", que
+  // es cierto y no sirve: manda a cargar un curso en una pantalla que ni
+  // siquiera tiene selector de curso. Peor, tomaba las entradas del menú por
+  // botones de descarga, porque se llaman "Importar/exportar…".
+  const PANTALLA = 'ConsCalificaDocentesGen.aspx';
+  if (!location.pathname.toLowerCase().includes(PANTALLA.toLowerCase())) {
+    salida.pantallaEquivocada = true;
+    salida.estoyEn = location.pathname.split('/').pop() || location.pathname;
+    salida.comoLlegar =
+      'Entrá por el menú a Consultas → "Notas parciales por meta" (abre ' +
+      PANTALLA + '), cargá un curso hasta ver las notas y volvé a correr la sonda.';
+    console.log('%c⚠ Esta no es la pantalla: estoy en ' + salida.estoyEn,
+                'color:#b45309;font-weight:bold');
+    console.log('%c→ ' + salida.comoLlegar, 'color:#0369a1;font-weight:bold');
+    return salida;
+  }
+
   // --- 1. Formulario y ocultos ---------------------------------------------
   // Esta pantalla usa OTRA master page que el resto (ver README-inventario),
   // así que no se puede dar por hecho que el form se llame igual.
@@ -139,6 +157,11 @@
     else if (/window\.open/i.test(txt)) clase = 'abre otra ventana';
     else if (/blob:|createObjectURL|msSaveBlob|new Blob/i.test(txt)) clase = 'lo arma el navegador (los datos ya están en el DOM)';
     else if (b.tipo === 'submit') clase = 'envía el formulario';
+    // Un <input type="image"> de ASP.NET es un submit con disfraz: no tiene
+    // href ni onclick, así que caía en "desconocido" justo con el botón que
+    // importa. Al postear manda `name.x` y `name.y` en vez de `name=valor`,
+    // detalle que hay que respetar para reproducir el POST.
+    else if (b.tipo === 'image') clase = 'envía el formulario (input type=image: postea name.x y name.y)';
     return { etiqueta: b.etiqueta, id: b.id, clase };
   });
 
@@ -194,6 +217,14 @@
     });
   }
 
+  // El número de las fotos TAMBIÉN tiene 10 dígitos y NO es el COD_ALUM (está
+  // en CATALOGO.md). La plataforma pone la foto del docente en el encabezado de
+  // todas las pantallas, así que sin descartarla la sonda respondía "sí, hay
+  // COD_ALUM" en cualquier lado, incluida la portada. No se esconde: va aparte
+  // con el motivo, para que se vea que se miró y se descartó a propósito.
+  const ES_FOTO = /\/Fotos\//i;
+  const descartados = [];
+
   for (const el of document.querySelectorAll('*')) {
     if (hallazgos.length >= 35) break;
     for (const a of el.attributes) {
@@ -201,23 +232,33 @@
       if (a.value.length > 300) continue;
       const m = RE_10.exec(a.value);
       if (!m) continue;
-      hallazgos.push({
+      const hallazgo = {
         donde: `atributo:${a.name}`,
         valor: m[0],
         contenedor: resumir(el),
         fragmento: limpiar(a.value).slice(0, 120),
-      });
+      };
+      if (ES_FOTO.test(a.value)) {
+        descartados.push({ ...hallazgo, motivo: 'es el número de la foto, no el COD_ALUM' });
+      } else {
+        hallazgos.push(hallazgo);
+      }
       break;
     }
   }
 
-  salida.diezDigitos = { total: hallazgos.length, hallazgos };
+  salida.diezDigitos = { total: hallazgos.length, hallazgos, descartados };
 
   // --- 6. Veredicto ---------------------------------------------------------
   // Para no tener que leer 300 líneas de JSON antes de saber qué sigue.
 
   const conCodigo = hallazgos.length > 0;
-  const tablaGrande = salida.tablas.find((t) => t.nFilas >= 5) || null;
+  // Una tabla de datos tiene filas Y columnas. Pedir solo filas dejaba pasar
+  // las de maquetado: con `< TODOS >` seleccionado, donde la pantalla no
+  // dibuja nada, el veredicto señaló una de 6 filas y UNA columna como "la
+  // tabla de notas" y de ahí dedujo que faltaba el COD_ALUM. Diagnóstico
+  // equivocado a partir de una tabla que no era.
+  const tablaGrande = salida.tablas.find((t) => t.nFilas >= 5 && t.nColumnas >= 3) || null;
   const enNavegador = salida.descargasInterpretadas
     .some((d) => /navegador/.test(d.clase));
 
@@ -227,7 +268,9 @@
     apareceCodAlum: conCodigo,
     quePareceElBotonDeDescarga: salida.descargasInterpretadas,
     siguiente: !tablaGrande
-      ? 'La tabla no está cargada. Elegí curso/periodo hasta que se vean las notas y volvé a correr la sonda.'
+      ? (salida.selects.some((s) => /lstCurso/i.test(s.id || '') && s.seleccionado.value.trim() === '%')
+          ? 'Con "< TODOS >" la pantalla no dibuja la tabla: hay que elegir UN curso concreto. Elegilo y volvé a correr la sonda.'
+          : 'La tabla no está cargada. Elegí curso/periodo hasta que se vean las notas y volvé a correr la sonda.')
       : enNavegador
         ? 'Los datos ya están en el DOM: se puede leer de ahí, sin archivo.'
         : conCodigo

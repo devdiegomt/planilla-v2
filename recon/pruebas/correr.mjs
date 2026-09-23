@@ -28,23 +28,40 @@ const correr = (cmd, args) =>
   spawnSync(cmd, args, { cwd: RAIZ, stdio: 'inherit', shell: false });
 
 // --- 1. Los .xls de prueba ---
-// `python3` en Linux/macOS, `python` en Windows. Se prueban los dos en vez de
-// exigir uno: el generador es requisito de todo lo demás.
+// Se prueban varios nombres en vez de exigir uno: el generador es requisito de
+// todo lo demás, y cada sistema llama a python distinto.
+//
+// Ojo con Windows: ahí `python3` normalmente EXISTE, pero como alias del
+// Microsoft Store que no es Python. Se lanza sin error, imprime "no se
+// encontró Python" y sale con 9009. Por eso no alcanza con mirar si el binario
+// existe, ni con el código de salida: ese 9009 en Linux se trunca a 49 (los
+// códigos POSIX son de 8 bits), así que un número mágico no sirve en los dos
+// sistemas.
+//
+// La forma portátil de saber si algo es Python es preguntárselo. `--version`
+// es inofensivo y no escribe nada: un Python de verdad responde 0, el alias
+// del Store no.
 const generador = join('recon', 'pruebas', 'genera-xls-de-prueba.py');
-let generado = false;
-for (const python of ['python3', 'python']) {
-  const r = correr(python, [generador]);
-  if (r.error) continue;                       // ese binario no existe: probar el otro
-  if (r.status !== 0) {
-    console.error(`\n✗ ${python} ${generador} falló (código ${r.status}).`);
-    console.error('  Hace falta python con xlwt:  pip install xlwt');
-    process.exit(1);
-  }
-  generado = true;
-  break;
+const CANDIDATOS = ['python3', 'python', 'py'];
+
+const esPython = (cmd) => {
+  const r = spawnSync(cmd, ['--version'], { stdio: 'ignore', shell: false });
+  return !r.error && r.status === 0;
+};
+
+const python = CANDIDATOS.find(esPython);
+
+if (!python) {
+  console.error(`\n✗ No encontré Python (probé: ${CANDIDATOS.join(', ')}).`);
+  console.error('  Las pruebas necesitan generar los .xls. Instalá Python y:  pip install xlwt');
+  console.error('  En Windows, "python3" suele ser solo el alias del Microsoft Store y no sirve.');
+  process.exit(1);
 }
-if (!generado) {
-  console.error('\n✗ No encontré python3 ni python. Las pruebas necesitan generar los .xls.');
+
+const gen = correr(python, [generador]);
+if (gen.status !== 0) {
+  console.error(`\n✗ ${python} ${generador} falló (código ${gen.status}).`);
+  console.error(`  Casi seguro falta xlwt:  ${python} -m pip install xlwt`);
   process.exit(1);
 }
 

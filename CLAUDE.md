@@ -12,6 +12,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `codalum-extractor.user.js` | Extrae el COD_ALUM de los 19 cursos a un JSON. Modo rápido: un solo `.xls` de "planillas por profesor" (19 hojas). | No |
 | `asistencia-autofill.user.js` | Marca la asistencia diaria desde un JSON, con dry-run. | Solo si Diego pulsa Guardar |
 | `inventario-plataforma.user.js` | Recorre las pantallas del menú y captura su estructura. | No |
+| `historial-extractor.user.js` | Recorre `ConsCalificaDocentesGen` (24) y saca la **definitiva** de cada estudiante por periodo. Es la única fuente de T1 y T2. | No |
 | `verificar-planilla.mjs` | Compara un Califica descargado contra el generado por la app. Código 0 = se puede subir, 1 = bloqueante. | No (local) |
 | `recon/sonda-csp.js` | Mide si la CSP de la plataforma deja correr un bookmarklet, para saber si Tampermonkey se puede reemplazar. | No |
 | `recon/sonda-conscalifica.js` | Lee el DOM de `ConsCalificaDocentesGen` (24), la única pantalla con los cuatro periodos, para saber qué entrega antes de escribir el extractor. | No |
@@ -19,7 +20,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `recon/` | Sondas de reconocimiento y pruebas. | — |
 
 READMEs por herramienta: `README.md`, `README-asistencia.md`, `README-inventario.md`,
-`README-verificador.md`; datos disponibles en `CATALOGO.md`.
+`README-verificador.md`, `README-historial.md`; datos disponibles en `CATALOGO.md`.
 
 ## Reglas de seguridad (no negociables)
 
