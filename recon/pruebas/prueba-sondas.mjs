@@ -47,6 +47,8 @@ const pagina = `<!doctype html><html><body>
     <option value="C2">Corte 2</option><option value="EV">Evaluación</option>
   </select>
   <a id="lnkDescargar" href="javascript:__doPostBack('lnkDescargar','')">Descargar Tabla</a>
+  <!-- El de la pantalla real: un input type=image, sin href ni onclick. -->
+  <input type="image" id="btnDescarga" name="ctl00$ContentPlaceHolder1$btnDescarga" alt="Descargar Tabla">
   <table id="gvNotas">
     <tr><th>COD_ALUM</th><th>NOMBRE ALUMNO</th><th>P1</th><th>P2</th><th>P3</th><th>FINAL</th></tr>
     <tr><td>2019034387</td><td>ALGUIEN DE PRUEBA UNO</td><td>80</td><td>75</td><td>0</td><td>78</td></tr>
@@ -91,8 +93,9 @@ eq(r.veredicto.apareceCodAlum, true, 'encuentra los códigos de 10 dígitos');
 eq(r.diezDigitos.hallazgos[0].indiceColumna, 0, 'y dice en qué columna están');
 
 // El botón: saber qué clase de cosa es decide todo lo que sigue.
-eq(r.veredicto.quePareceElBotonDeDescarga.map(d => d.clase), ['postback de ASP.NET'],
-   'clasifica "Descargar Tabla" como postback, no como enlace a un archivo');
+eq(r.veredicto.quePareceElBotonDeDescarga.map(d => d.clase),
+   ['postback de ASP.NET', 'envía el formulario (input type=image: postea name.x y name.y)'],
+   'clasifica los dos disparadores, y no deja el input type=image en "desconocido"');
 
 // Los filtros, que son la razón de usar esta pantalla y no las planillas.
 const periodos = r.selects.find(s => s.id === 'ddlPeriodo');
@@ -119,7 +122,7 @@ console.log('\nCorrida en la portada, no en la pantalla');
 const portada = `<!doctype html><html><body>
 <form name="aspnetForm" id="aspnetForm" method="post" action="./Default.aspx">
   <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="${'x'.repeat(16772)}">
-  <img id="ctl00_FotoMenu" class="IcoFoto" src="../Fotos/1007718065.jpg">
+  <img id="ctl00_FotoMenu" class="IcoFoto" src="../Fotos/1099999999.jpg">
   <a id="1096" href="#">Importar/exportar planilla individual GLA</a>
   <span onclick="SessionEntrar('Importar/exportar planilla individual GLA', '1096', 'ReporteCalificaMatriz.aspx');">Importar/exportar planilla individual GLA</span>
 </form></body></html>`;
@@ -147,7 +150,7 @@ ok(!('descargas' in rp),
 console.log('\nLa foto del encabezado no es un código de estudiante');
 
 const conFoto = pagina.replace('<form ',
-  '<img id="ctl00_FotoMenu" class="IcoFoto" src="../Fotos/1007718065.jpg"><form ');
+  '<img id="ctl00_FotoMenu" class="IcoFoto" src="../Fotos/1099999999.jpg"><form ');
 const domFoto = new JSDOM(conFoto, {
   url: 'https://ejemplo/arrayanes/2026/Seguro/ConsCalificaDocentesGen.aspx',
   runScripts: 'outside-only',
@@ -155,9 +158,9 @@ const domFoto = new JSDOM(conFoto, {
 domFoto.window.console = { log: () => {} };
 const rf = domFoto.window.eval(codigo);
 
-ok(!rf.diezDigitos.hallazgos.some(h => h.valor === '1007718065'),
+ok(!rf.diezDigitos.hallazgos.some(h => h.valor === '1099999999'),
    'el número de la foto no cuenta como código');
-eq(rf.diezDigitos.descartados.map(d => d.valor), ['1007718065'],
+eq(rf.diezDigitos.descartados.map(d => d.valor), ['1099999999'],
    'pero queda a la vista, descartado y con el motivo');
 ok(/foto/i.test(rf.diezDigitos.descartados[0].motivo), 'que dice por qué');
 eq(rf.veredicto.apareceCodAlum, true,

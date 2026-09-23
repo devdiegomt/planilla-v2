@@ -26,7 +26,7 @@ Este paso existe para **no adivinar selectores**.
   (`801→08`, `1001→10`).
 - **No hay lista de estudiantes en la página.** Con el 801 cargado
   (`hfCurso: "801  "`), `tablas: []`. El único número de 10 dígitos es la foto
-  del menú (`ctl00_FotoMenu → ../Fotos/1007718065.jpg`). El COD_ALUM solo puede
+  del menú (`ctl00_FotoMenu → ../Fotos/1099999999.jpg`). El COD_ALUM solo puede
   venir del archivo de Exportar → por eso existe la v3.
 - **`btnImportar` es el camino de escritura.** Vetado: ninguna sonda ni el
   extractor lo incluyen en el POST.

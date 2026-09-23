@@ -157,6 +157,11 @@
     else if (/window\.open/i.test(txt)) clase = 'abre otra ventana';
     else if (/blob:|createObjectURL|msSaveBlob|new Blob/i.test(txt)) clase = 'lo arma el navegador (los datos ya están en el DOM)';
     else if (b.tipo === 'submit') clase = 'envía el formulario';
+    // Un <input type="image"> de ASP.NET es un submit con disfraz: no tiene
+    // href ni onclick, así que caía en "desconocido" justo con el botón que
+    // importa. Al postear manda `name.x` y `name.y` en vez de `name=valor`,
+    // detalle que hay que respetar para reproducir el POST.
+    else if (b.tipo === 'image') clase = 'envía el formulario (input type=image: postea name.x y name.y)';
     return { etiqueta: b.etiqueta, id: b.id, clase };
   });
 

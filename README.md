@@ -93,7 +93,7 @@ Contrastá contra el Califica del **801**, que ya tenés.
 
 **Antes que nada:** el `COD_ALUM` empieza por año de matrícula —`2019034387`,
 `2018044266`— y **no** es el número que nombra los archivos de foto
-(`../Fotos/1007718065.jpg`). Son dos identificadores distintos. Compará contra
+(`../Fotos/1099999999.jpg`). Son dos identificadores distintos. Compará contra
 la columna `COD_ALUM` del Califica, no contra el nombre de la foto.
 
 Cuatro chequeos, de más barato a más caro:
