@@ -37,7 +37,14 @@ function crear({ columnaExtra = false, filaEnEdicion = false, sinTabla = false }
   w.HTMLElement.prototype.click = function () { clicks.push(this.id || this.name || this.textContent); };
   w.setTimeout = (fn) => { fn(); return 0; };
 
-  const est = { curso: CURSOS[0] };
+  /*
+   * `materia` y `consultado` reproducen lo que hace la plataforma de verdad:
+   * cambiar de curso DEJA LA MATERIA SIN ELEGIR Y VACÍA LA TABLA, y la tabla no
+   * vuelve hasta pulsar "Consultar". La primera versión del arnés dibujaba la
+   * tabla siempre, así que las pruebas pasaban y la corrida real volvió con
+   * "no hay tabla en pantalla" para los cuatro cursos.
+   */
+  const est = { curso: CURSOS[0], materia: '1035', consultado: true };
   const op = (v, t, s) => `<option value="${v}"${s ? ' selected' : ''}>${t}</option>`;
 
   function filas() {
@@ -69,10 +76,12 @@ function crear({ columnaExtra = false, filaEnEdicion = false, sinTabla = false }
       <input type="hidden" id="ctl00_ContentPlaceHolder1_hfProfesor" value="451">
       <select id="ctl00_ContentPlaceHolder1_lstCurso" name="ctl00$ContentPlaceHolder1$lstCurso">
         ${CURSOS.map((c) => op(c, c, c === est.curso)).join('')}${op('%', '< TODOS >', false)}</select>
-      <select id="ctl00_ContentPlaceHolder1_lstMateria"><option value="1035" selected>Information Technology</option></select>
+      <select id="ctl00_ContentPlaceHolder1_lstMateria" name="ctl00$ContentPlaceHolder1$lstMateria">
+        ${op('0', '<TODOS>', est.materia === '0')}${op('1035', 'Information Technology', est.materia === '1035')}</select>
       <select id="ctl00_ContentPlaceHolder1_lstPeriodo"><option value="03" selected>TERCERO</option></select>
       <input type="image" id="ctl00_ContentPlaceHolder1_btnDescargaExcel" alt="Descargar a Excel">
-      ${sinTabla ? '' : `<table id="ctl00_ContentPlaceHolder1_gvActividades">
+      <input type="submit" id="ctl00_ContentPlaceHolder1_btnRefresca" name="ctl00$ContentPlaceHolder1$btnRefresca" value="Consultar">
+      ${(sinTabla || est.materia === '0' || !est.consultado) ? '' : `<table id="ctl00_ContentPlaceHolder1_gvActividades">
         <thead><tr>${ths}</tr></thead><tbody>${filas()}
         <tr><td colspan="11">Total</td></tr></tbody></table>`}`;
   }
@@ -92,7 +101,19 @@ function crear({ columnaExtra = false, filaEnEdicion = false, sinTabla = false }
         await new Promise((r) => setTimeout(r, 0));
         if (postbacks.length === atendidos) break;
         atendidos = postbacks.length;
-        est.curso = w.document.getElementById('ctl00_ContentPlaceHolder1_lstCurso').value;
+        const ultimo = postbacks[postbacks.length - 1];
+        const nuevoCurso = w.document.getElementById('ctl00_ContentPlaceHolder1_lstCurso').value;
+        if (/lstCurso/.test(ultimo)) {
+          // Lo que hace la plataforma: resetea la materia y vacía la tabla.
+          est.curso = nuevoCurso;
+          est.materia = '0';
+          est.consultado = false;
+        } else if (/lstMateria/.test(ultimo)) {
+          est.materia = w.document.getElementById('ctl00_ContentPlaceHolder1_lstMateria').value;
+          est.consultado = false;          // elegir no alcanza
+        } else if (/btnRefresca/.test(ultimo)) {
+          est.consultado = true;
+        }
         pintar(); evaluar();
       }
     },
@@ -113,8 +134,10 @@ console.log('\n[no escribe, que es lo primero]');
      'NUNCA pulsa "Editar": es lo único que destraba los campos, y no hay nada que escribir');
   ok(!p.postbacks.some((t) => /ctl0\d\$ctl00/.test(t)),
      'ni "Actualizar", que es el que guardaría');
-  ok(p.postbacks.every((t) => /lstCurso/.test(t)),
-     'lo único que dispara es el cambio de curso, igual que elegirlo a mano');
+  ok(p.postbacks.every((t) => /lstCurso|lstMateria|btnRefresca/.test(t)),
+     'solo dispara curso, materia y Consultar: las tres son consultas');
+  ok(!p.postbacks.some((t) => /btnDescargaExcel/.test(t)),
+     'ni siquiera el de descargar, que no hace falta');
 }
 
 console.log('\n[uno por grado, que es lo que hace falta]');
@@ -125,7 +148,9 @@ console.log('\n[uno por grado, que es lo que hace falta]');
   await p.q('#ga-ir').onclick();
   await p.correr();
   eq(p.salida().cursos.map((c) => c.grado), [8, 9, 11], 'y cubre los tres grados');
-  eq(p.postbacks.length, 2, 'con 2 postbacks: el primer curso ya estaba en pantalla');
+  // 1º curso: ya está elegido y consultado → 0. Los otros dos: curso +
+  // materia + consultar = 3 cada uno.
+  eq(p.postbacks.length, 6, 'con 6 postbacks: tres por cada curso que hay que cambiar');
 }
 {
   const p = crear();
@@ -179,6 +204,37 @@ console.log('\n[sin tabla lo dice y sigue]');
   eq(s.cursos.length, 0, 'no inventa actividades');
   ok(s.errores.length > 0, 'lo anota en errores[]');
   ok(/Sigo/.test(p.log()), 'y sigue con el siguiente curso');
+}
+
+console.log('\n[la materia y el Consultar, que es lo que faltaba]');
+{
+  const p = crear();
+  await p.q('#ga-ir').onclick();
+  await p.correr();
+  const s = p.salida();
+  eq(s.cursos.length, 3, 'los tres grados traen tabla');
+  eq(s.errores, [], 'sin un solo "no hay tabla en pantalla"');
+  // El orden importa: elegir la materia antes de consultar.
+  const delSegundo = p.postbacks.slice(0, 3);
+  ok(/lstCurso/.test(delSegundo[0]) && /lstMateria/.test(delSegundo[1]) && /btnRefresca/.test(delSegundo[2]),
+     'y en ese orden: curso, materia, Consultar');
+}
+
+console.log('\n[la lista blanca de controles]');
+{
+  const p = crear();
+  // Se le pide al script que dispare algo que NO está permitido.
+  const fn = p.w.eval('(function(n){ try { ' +
+    'const PERM = new Set(["ctl00$ContentPlaceHolder1$lstCurso"]); ' +
+    'if (!PERM.has(n)) throw new Error("control no permitido"); return "pasó"; } ' +
+    'catch (e) { return e.message; } })');
+  eq(fn('ctl00$ContentPlaceHolder1$gvActividades$ctl04$ctl00'), 'control no permitido',
+     '(la forma de la guarda: lo que no está en la lista lanza)');
+  const sc = FUENTE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  ok(/PERMITIDOS/.test(sc) && /no permitido/.test(sc),
+     'la lista blanca está en el código, no solo en la prueba');
+  ok(/__doPostBack/.test(sc) && (sc.match(/__doPostBack/g) || []).length === 1,
+     'y hay UN solo lugar donde se llama a __doPostBack: el que la verifica');
 }
 
 console.log('\n[reglas del encargo, sobre el fuente]');
