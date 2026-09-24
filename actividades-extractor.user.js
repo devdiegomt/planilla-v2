@@ -175,12 +175,26 @@
 
     const cuerpo = tabla.tBodies[0] || tabla;
     const actividades = [];
+    let vacias = 0;
     for (const f of [...cuerpo.rows].filter((r) => !r.querySelector('th'))) {
       const celda = (i) => (i >= 0 ? valorCelda(f.cells[i]) : '');
       const descripcion = celda(mapa.descripcion);
       const porcentaje = aNumero(celda(mapa.porcentaje));
       // Sin descripción no es una actividad: es el pie del GridView.
       if (!descripcion) continue;
+      /*
+       * Las casillas sin usar.
+       *
+       * La tabla trae ocho actividades por categoría estén usadas o no; las
+       * vacías vienen con 0 % y con la descripción repitiendo el rótulo
+       * ("ACT.3"). Medido: de 33 filas, solo 10 u 11 son actividades reales.
+       * Se cuentan y se dicen, no se tiran en silencio: si alguna vez una
+       * actividad de verdad quedara en 0 % habría que poder notarlo.
+       */
+      if (!porcentaje && norm(descripcion) === norm(celda(mapa.general))) {
+        vacias++;
+        continue;
+      }
       actividades.push({
         meta: celda(mapa.meta),
         general: celda(mapa.general),
@@ -190,7 +204,7 @@
         destino: celda(mapa.destino),
       });
     }
-    return { actividades };
+    return { actividades, vacias };
   }
 
   // --- Postbacks ------------------------------------------------------------
@@ -330,9 +344,10 @@
       materiaNombre: lim(el(ID.materia)?.selectedOptions[0]?.text || ''),
       periodo: lim(valorDe(ID.periodo)),
       actividades: lectura.actividades,
+      casillasSinUsar: lectura.vacias,
     });
     const suma = lectura.actividades.reduce((a, x) => a + (x.porcentaje || 0), 0);
-    anotar(`✔ ${curso}: ${lectura.actividades.length} actividades, suman ${suma}%.`);
+    anotar(`✔ ${curso}: ${lectura.actividades.length} actividades (${lectura.vacias} casillas sin usar), suman ${suma}%.`);
     estado.i++; estado.intentos[curso] = 0; persistir(); refrescarPanel();
     return continuar();
   }

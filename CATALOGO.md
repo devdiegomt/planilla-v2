@@ -175,6 +175,34 @@ materia de un solo docente.
   **Consultar** (`btnRefresca`); con la materia en `<TODOS>` (value `0`) no dibuja
   nada. Y **cambiar de curso deja la materia sin elegir y vacía la tabla**, así
   que el recorrido es curso → materia → Consultar, tres postbacks por curso.
+- **Ocho casillas por categoría, usadas o no.** De 33 filas, 10 u 11 son
+  actividades reales; el resto viene en 0 % y con la descripción repitiendo el
+  rótulo (`ACT.3`). El extractor las descarta y **dice cuántas** (`casillasSinUsar`):
+  si alguna vez una actividad de verdad quedara en 0 % hay que poder notarlo.
+
+#### Lo que respondió, corrido el 24/09/2026 sobre 8º, 9º, 10º y 11º
+
+Los pesos de la plataforma **coinciden exactamente** con `SLOTS_8_10` y `SLOTS_11`
+de planilla-app, y cada categoría suma 100 %:
+
+| Grado | Pesos leídos en la matriz |
+| --- | --- |
+| 8º, 9º, 10º | K·C4·60 K·C5·40 · M·C6·50 M·C8·50 · U·C2·50 U·C9·50 · C·C3·25 C·C4·25 C·C5·50 · E·C7·100 |
+| 11º | K·C2·60 K·C4·40 · M·C3·40 M·C6·60 · U·C5·25 U·C8·50 U·C9·25 · C·C3·25 C·C4·25 C·C6·50 · E·C7·100 |
+
+Es la primera vez que esos números se comprueban contra su fuente; hasta ahora se
+habían validado solo de rebote, porque las definitivas que calcula la app daban
+igual que las de la plataforma. Que coincidan **no vuelve inútil al extractor**:
+los pesos son los de la materia de Diego, y lo que esta pantalla permite es leerlos
+de la materia de cualquiera en vez de darlos por sentado.
+
+- **El `cod_mat` de esta pantalla es otro espacio de ids**: 8º→`1035`, 9º→`2438`,
+  10º→`1043`, 11º→`1045`. No son los `2508`/`2509`/`2510`/`3011` del Califica y del
+  planeador, aunque se llamen igual y en la misma pantalla. Mezclarlos emparejaría
+  materias que no tienen nada que ver.
+- La puntuación de los títulos es inconsistente **dentro de un mismo curso**
+  (`T3 - C4` y `T3 – C8`, guion y raya). Es lo que ya tolera `parseAchievementDesc`
+  en la app; acá se confirma que no era una rareza de un archivo suelto.
 
 ### PlaneadorClase (803), medido el 24/09/2026
 

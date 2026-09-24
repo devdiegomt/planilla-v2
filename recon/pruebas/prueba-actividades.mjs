@@ -20,7 +20,8 @@ const eq = (g, w, m) => { const i = JSON.stringify(g) === JSON.stringify(w);
 const CURSOS = ['801  ', '802  ', '901  ', '1101 '];
 // Porcentajes distintos por grado: si el recorrido repitiera una pantalla o se
 // saltara un grado, saldrían iguales donde deberían diferir.
-const PCT = { 8: [60, 40], 9: [70, 30], 11: [50, 50] };
+// El 0 es una casilla sin usar: la pantalla trae ocho por categoría, usadas o no.
+const PCT = { 8: [60, 40, 0], 9: [70, 30, 0], 11: [50, 50, 0] };
 const gradoDe = (c) => (c.trim().length >= 4 ? Number(c.trim().slice(0, 2)) : Number(c.trim()[0]));
 
 // Los tres encabezados vacíos son los de los ids internos, tal cual la pantalla.
@@ -55,9 +56,11 @@ function crear({ columnaExtra = false, filaEnEdicion = false, sinTabla = false }
       const edit = filaEnEdicion && i === 0;
       // En edición el texto se va al value del input y la celda queda vacía.
       const celdaPct = edit ? `<input name="${n}$ctl05" value="${p}">` : String(p);
+      // Una casilla sin usar repite el rótulo como descripción y va en 0 %.
+      const texto = p === 0 ? `ACT.${i + 1}` : `T3 - C${4 + i}. TITULO ${i}`;
       const celdaDesc = edit
-        ? `<textarea name="${n}$descripcion">T3 - C${4 + i}. TITULO ${i}</textarea>`
-        : `T3 - C${4 + i}. TITULO ${i} <textarea name="${n}$descripcion" readonly>T3 - C${4 + i}. TITULO ${i}</textarea>`;
+        ? `<textarea name="${n}$descripcion">${texto}</textarea>`
+        : `${texto} <textarea name="${n}$descripcion" readonly>${texto}</textarea>`;
       return `<tr>
         ${columnaExtra ? '<td>x</td>' : ''}
         <td><a href="javascript:__doPostBack('ctl00$ContentPlaceHolder1$gvActividades','Edit$${i}')">${edit ? 'Actualizar' : 'Editar'}</a></td>
@@ -172,6 +175,8 @@ console.log('\n[el porcentaje]');
   eq(s.cursos[0].actividades[0].ciclo, 'Ciclo 1', 'el ciclo');
   eq(s.cursos[0].actividades[0].destino, 'Clase', 'y el destino');
   eq(s.cursos[0].actividades.length, 2, 'sin contar el pie del GridView');
+  eq(s.cursos[0].casillasSinUsar, 1,
+     'y la casilla sin usar no entra, pero se cuenta: si una actividad real quedara en 0% hay que poder notarlo');
 }
 
 console.log('\n[una columna nueva no corre la lectura]');
