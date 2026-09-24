@@ -281,6 +281,85 @@ eq(rv.veredicto.hayTablaDeDatos, false, 'sin tabla lo dice');
 ok(/lstCurso/.test(rv.veredicto.siguiente),
    'y señala el filtro que está sin elegir, en vez de un consejo genérico');
 
+// --- 3f. Lo que enseñaron las corridas reales -----------------------------
+// La matriz de actividades (831) y el planeador (803) destaparon tres cosas
+// que la sonda hacía mal. Las tres se reproducen acá.
+console.log('\nLo que enseñaron la matriz y el planeador');
+
+// Un directorio de 203 docentes, como el lstFilProfesor del planeador.
+const docentes = Array.from({ length: 203 }, (_, i) =>
+  `<option value="${100 + i}">${100 + i} - NOMBRE APELLIDO ${i}</option>`).join('');
+
+const conMenu = `<!doctype html><html><body>
+<form name="aspnetForm" id="aspnetForm" method="post" action="./DefActividadDocentePorcMatriz.aspx">
+  <!-- El menú lateral: NO es la pantalla. Oculto hasta que se despliega. -->
+  <a id="1096" href="#" style="display:none">Importar/exportar planilla individual GLA</a>
+  <span style="display:none" onclick="SessionEntrar('Importar/exportar planilla individual GLA', '1096', 'ReporteCalificaMatriz.aspx');">Importar/exportar planilla individual GLA</span>
+  <select id="lstFilProfesor" name="lstFilProfesor">${docentes}</select>
+  <select id="lstCurso" name="lstCurso">
+    <option value="801  " selected>801 - OCHOCIENTOS UNO</option>
+    <option value="802  ">802 - OCHOCIENTOS DOS</option>
+  </select>
+  <input type="image" id="btnDescargaExcel" name="btnDescargaExcel" alt="Descargar a Excel">
+  <input type="submit" id="btnRefresca" name="btnRefresca" value="Consultar">
+  <table id="gvActividades">
+    <tr><th></th><th>Meta de comprensión</th><th>Descripción</th><th>Porcentaje</th><th>Ciclo</th></tr>
+    <tr><td><a href="javascript:__doPostBack('gv','Edit$0')">Editar</a></td><td>Comprensión</td>
+        <td>T3 - C4. TITULO DE PRUEBA <textarea name="descripcion" readonly></textarea></td>
+        <td>60</td><td><select name="lstCiclo" disabled><option>Ciclo 4</option></select></td></tr>
+    <tr><td>Editar</td><td>Comprensión</td><td>T3 - C5. OTRO <textarea name="d2" readonly></textarea></td>
+        <td>40</td><td><select name="c2" disabled><option>Ciclo 5</option></select></td></tr>
+    <tr><td>Editar</td><td>Comprensión</td><td>Act.3 <textarea name="d3" readonly></textarea></td>
+        <td>0</td><td><select name="c3" disabled><option>SELECCIONE</option></select></td></tr>
+    <tr><td>Editar</td><td>Comprensión</td><td>Act.4 <textarea name="d4" readonly></textarea></td>
+        <td>0</td><td><select name="c4" disabled><option>SELECCIONE</option></select></td></tr>
+    <tr><td>Editar</td><td>Comprensión</td><td>Act.5 <textarea name="d5" readonly></textarea></td>
+        <td>0</td><td><select name="c5" disabled><option>SELECCIONE</option></select></td></tr>
+  </table>
+</form></body></html>`;
+
+const domMenu = new JSDOM(conMenu, {
+  url: 'https://ejemplo/arrayanes/2026/Seguro/DefActividadDocentePorcMatriz.aspx',
+  runScripts: 'outside-only',
+});
+domMenu.window.console = { log: () => {} };
+const fotoMenu = foto(domMenu.window);
+const rc = domMenu.window.eval(generica);
+
+ok(fotoMenu === foto(domMenu.window), 'la página queda igual');
+
+// 1) El menú no es la pantalla.
+ok(!rc.acciones.some(a => /Importar\/exportar/.test(a.etiqueta)),
+   'las entradas del menú ya no se cuentan como acciones de la pantalla');
+ok(!rc.veredicto.botonesDeEscritura.some(b => /Importar\/exportar/.test(b || '')),
+   'ni hacen decir "esta pantalla escribe" por lo que no es');
+ok(rc.acciones.some(a => a.id === 'btnDescargaExcel'),
+   'pero los botones que sí son de la pantalla siguen ahí');
+
+// 2) "Editar" es escritura, y se distingue de poder escribir AHORA.
+eq(rc.veredicto.laPantallaEscribe, true, 'reconoce que la pantalla escribe');
+eq(rc.veredicto.seEscribeAhora, false,
+   'pero NO ahora: los campos están trabados hasta que se pulsa Editar');
+eq(rc.veredicto.seEditaPorFila, true, 'y dice que se edita fila por fila');
+ok(rc.tablas[0].muestraFilas[0].celdas.some(c => /trabado>/.test(c)),
+   'marcando los controles trabados, en vez de tomarlos por editables');
+
+// 3) Los nombres de 203 docentes no se vuelcan.
+const prof = rc.selects.find(s => s.id === 'lstFilProfesor');
+eq(prof.textosEnmascarados, true, 'una lista de 203 personas sale enmascarada');
+ok(!/NOMBRE APELLIDO 1\b/.test(JSON.stringify(prof)), 'ningún nombre completo viaja');
+ok(prof.opciones.every(o => /^\d+$/.test(o.value)),
+   'pero los ids sí, que es lo que hace falta para el filtro y no identifica a nadie');
+const cursos = rc.selects.find(s => s.id === 'lstCurso');
+eq(cursos.textosEnmascarados, false, 'y una lista corta del oficio sigue en claro');
+ok(/OCHOCIENTOS/.test(JSON.stringify(cursos)), 'con el nombre del curso legible');
+
+// 4) No toda pantalla habla de estudiantes.
+eq(rc.veredicto.esDeEstudiantes, false, 'sabe que acá no hay estudiantes');
+ok(!/emparejar por nombre/.test(rc.veredicto.siguiente),
+   'así que no aconseja emparejar por nombre donde no hay a quién emparejar');
+ok(/no habla de estudiantes/.test(rc.veredicto.siguiente), 'y lo dice');
+
 // --- 4. Que la prueba de arriba sirva de algo ---------------------------
 // Un arnés que nunca falla no prueba nada. Acá se corre a propósito algo que
 // SÍ escribe, y lo que se comprueba es que la foto lo delate: tanto el campo

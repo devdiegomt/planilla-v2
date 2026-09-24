@@ -82,6 +82,8 @@
   // Con qué se acota la pantalla, y si elegir recarga la página: eso decide si
   // un recorrido puede ser un favorito o tiene que ser userscript.
 
+  const LISTA_LARGA = 25;   // más que los 20 cursos: ya no es una lista del oficio
+
   salida.selects = [...document.querySelectorAll('select')].map((s) => {
     const onchange = s.getAttribute('onchange');
     return {
@@ -91,9 +93,20 @@
       deshabilitado: s.disabled,
       nOpciones: s.options.length,
       seleccionado: { value: s.value, texto: limpiar(s.selectedOptions[0]?.text) },
-      // Todas las opciones si la lista es corta; si es larga, una muestra: un
-      // selector de 500 estudiantes no aporta nada volcado entero.
-      opciones: [...s.options].slice(0, 40).map((o) => ({ value: o.value, texto: limpiar(o.text) })),
+      // Los TEXTOS se enmascaran cuando la lista es larga. Corrida real en el
+      // planeador: `lstFilProfesor` trae 203 opciones con el nombre completo de
+      // cada docente del colegio, y la sonda los volcaba en claro en un JSON
+      // que después se pega en un chat. No son menores, pero son personas
+      // reales que no eligieron estar ahí. Los `value` (ids) sí van: son lo que
+      // hace falta para armar el filtro y no identifican a nadie por sí solos.
+      //
+      // El umbral separa las listas del oficio —cursos (20), periodos (5),
+      // ciclos (10)— de lo que ya es un directorio de gente.
+      opciones: [...s.options].slice(0, 40).map((o) => ({
+        value: o.value,
+        texto: s.options.length > LISTA_LARGA ? enmascarar(o.text) : limpiar(o.text),
+      })),
+      textosEnmascarados: s.options.length > LISTA_LARGA,
       hayMas: s.options.length > 40,
     };
   });
@@ -117,7 +130,7 @@
   const ES_DISPARADOR =
     'a, button, input[type=submit], input[type=button], input[type=image], [onclick]';
   const PARECE_ACCION =
-    /descargar|exportar|excel|xls|csv|imprimir|pdf|consultar|buscar|generar|ver|tabla|guardar|importar|actualizar|grabar/i;
+    /descargar|exportar|excel|xls|csv|imprimir|pdf|consultar|buscar|generar|ver|tabla|guardar|importar|actualizar|grabar|editar|modificar|nuevo|agregar/i;
 
   const clasificar = (b) => {
     const txt = `${b.href || ''} ${b.onclick || ''}`;
@@ -138,7 +151,31 @@
   };
 
   // Escribir o no escribir es LA pregunta de seguridad de este repo.
-  const PARECE_ESCRITURA = /guardar|importar|grabar|eliminar|borrar|anular|actualizar|btnImportar/i;
+  // "Editar" cuenta: en la matriz de actividades cada fila tiene uno, y es el
+  // que habilita los campos para escribir. Sin él la sonda decía que la
+  // pantalla no escribía porque los controles estaban deshabilitados — que es
+  // cierto hasta que se pulsa Editar.
+  const PARECE_ESCRITURA =
+    /guardar|importar|grabar|eliminar|borrar|anular|actualizar|editar|modificar|nuevo|agregar|btnImportar/i;
+
+  /*
+   * El menú lateral NO es la pantalla.
+   *
+   * Corrida real en la matriz de actividades: la sonda declaró "esta pantalla
+   * escribe" nombrando "Importar/exportar planilla…" seis veces — que son
+   * entradas del menú, no botones de acá— y NO nombró los "Editar" de cada
+   * fila, que son los que de verdad escriben. Gritó por lo que no era y se
+   * calló con lo que sí. Las entradas del menú se reconocen porque navegan con
+   * `SessionEntrar` o porque su id es el número de pantalla.
+   *
+   * NO se usa la visibilidad para reconocerlas, aunque el menú esté plegado:
+   * un botón de la pantalla también puede estar oculto en un panel cerrado, y
+   * de paso en jsdom todo es invisible, así que la prueba dejaba de distinguir
+   * justo lo que tenía que comprobar. Se reconoce el menú por lo que ES.
+   */
+  const esDelMenu = (b) =>
+    /SessionEntrar/i.test(b.onclick || '') ||
+    /^\d+$/.test(b.id || '');
 
   salida.acciones = [...document.querySelectorAll(ES_DISPARADOR)]
     .map((b) => ({
@@ -151,6 +188,7 @@
       onclick: limpiar(b.getAttribute('onclick')).slice(0, 240) || null,
       visible: !!(b.offsetParent || b.getClientRects().length),
     }))
+    .filter((b) => !esDelMenu(b))
     .filter((b) => PARECE_ACCION.test(`${b.etiqueta} ${b.id} ${b.href} ${b.onclick}`))
     .slice(0, 25)
     .map((b) => ({
@@ -185,10 +223,14 @@
           celdas: [...f.cells].map((c) => {
             const control = c.querySelector('input, select, textarea');
             const texto = enmascarar(c.textContent);
-            // Una celda editable cambia todo: significa que la pantalla escribe.
-            return control
-              ? `${texto} <${control.tagName.toLowerCase()} ${control.getAttribute('name') || ''}>`
-              : texto;
+            // Una celda con control cambia todo: la pantalla escribe. Pero hay
+            // que decir si se puede escribir AHORA: la matriz de actividades
+            // trae todo deshabilitado hasta que se pulsa "Editar" en la fila, y
+            // confundir las dos cosas hace creer que una pantalla de escritura
+            // es de consulta.
+            if (!control) return texto;
+            const trabado = control.disabled || control.readOnly;
+            return `${texto} <${control.tagName.toLowerCase()} ${control.getAttribute('name') || ''}${trabado ? ' trabado' : ''}>`;
           }),
         })),
       };
@@ -262,14 +304,31 @@
     const v = (s.seleccionado.value || '').trim();
     return v === '' || v === '%' || v === '-1';
   });
-  const celdasEditables = salida.tablas.some((t) =>
+  const conControles = salida.tablas.some((t) =>
     t.muestraFilas.some((f) => f.celdas.some((c) => /<(input|select|textarea)/.test(c))));
+  const editablesAhora = salida.tablas.some((t) =>
+    t.muestraFilas.some((f) => f.celdas.some((c) => /<(input|select|textarea)[^>]*>/.test(c) && !/trabado>/.test(c))));
+
+  /*
+   * ¿Esta pantalla habla de estudiantes?
+   *
+   * La sonda daba siempre un veredicto sobre el COD_ALUM, incluso en la matriz
+   * de actividades y en el planeador, donde no hay un solo estudiante: son
+   * actividades y planes. "Habría que emparejar por nombre" ahí no es un
+   * consejo, es ruido que hace dudar de todo lo demás.
+   */
+  const DE_ESTUDIANTES = /codigo|cod_alum|alumno|estudiante|nombre/i;
+  const esDeEstudiantes = conCodigo || salida.tablas.some((t) =>
+    t.nFilas >= 5 && t.encabezados.some((h) => DE_ESTUDIANTES.test(h)));
 
   salida.veredicto = {
     hayTablaDeDatos: !!tabla,
     tablaMasProbable: tabla ? { id: tabla.id, filas: tabla.nFilas, columnas: tabla.nColumnas } : null,
     apareceCodAlum: conCodigo,
-    laPantallaEscribe: escriben.length > 0 || celdasEditables,
+    laPantallaEscribe: escriben.length > 0 || conControles,
+    seEscribeAhora: editablesAhora,
+    seEditaPorFila: conControles && !editablesAhora,
+    esDeEstudiantes,
     botonesDeEscritura: escriben.map((a) => a.etiqueta || a.id),
     acciones: salida.acciones.map((a) => ({ etiqueta: a.etiqueta, id: a.id, clase: a.clase, escribe: a.escribe })),
     siguiente: !tabla
@@ -278,9 +337,11 @@
           : 'No hay tabla de datos en pantalla. Cargá la consulta hasta que se vean y volvé a correr la sonda.')
       : enNavegador
         ? 'Los datos ya están en el DOM y el archivo lo arma el navegador: se puede leer de ahí, sin descargar nada.'
-        : conCodigo
-          ? 'Hay tabla y hay códigos: se puede leer del DOM. Falta ver qué entrega el botón, por si trae más columnas.'
-          : 'Hay tabla pero NO se ve el COD_ALUM. Habría que emparejar por nombre —frágil— o buscarlo en el archivo que baja el botón.',
+        : !esDeEstudiantes
+          ? 'Hay tabla y se puede leer del DOM. Esta pantalla no habla de estudiantes, así que el COD_ALUM no aplica: lo que identifica cada fila son los ids de sus columnas.'
+          : conCodigo
+            ? 'Hay tabla y hay códigos: se puede leer del DOM. Falta ver qué entrega el botón, por si trae más columnas.'
+            : 'Hay tabla de estudiantes pero NO se ve el COD_ALUM. Habría que emparejar por nombre —frágil— o buscarlo en el archivo que baja el botón.',
   };
 
   // --- 7. Entrega -----------------------------------------------------------
