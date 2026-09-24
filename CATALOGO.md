@@ -159,6 +159,17 @@ materia de un solo docente.
 - **Todo llega trabado**: los `<select>` deshabilitados y los `<textarea>` en solo
   lectura. Se escribe fila por fila, pulsando "Editar". O sea que la pantalla
   escribe, pero no en el estado en que se abre.
+- **Con una fila en edición** (medido aparte): se destraban su `descripcion`,
+  `lstCiclo` y `lstDestino`, aparecen cinco `<input type=text>` sin id —solo
+  `name`, `…$gvActividades$ctlNN$ctl02` a `ctl06`— con el id de actividad, el
+  `cod_mat`, el id del logro, **el porcentaje** y el rótulo; y el "Editar" de esa
+  fila se vuelve "Actualizar". Eso es lo que habría que enviar para escribir, y
+  **por eso no hace falta**: el porcentaje ya se lee como texto en la fila sin
+  editar. El extractor no pulsa "Editar" nunca.
+- Los ids de las columnas 4, 5 y 6 **no tienen encabezado**. Se leen por
+  posición o no se leen; el extractor los ignora y se ancla solo en las columnas
+  con nombre (`Descripción`, `Porcentaje`, `Ciclo`, `Destino`), que son las que
+  hacen falta.
 - `lstPeriodo` trae **solo el periodo en curso** (`03`), como las planillas.
 
 ### PlaneadorClase (803), medido el 24/09/2026

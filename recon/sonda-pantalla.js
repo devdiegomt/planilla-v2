@@ -329,7 +329,10 @@
     seEscribeAhora: editablesAhora,
     seEditaPorFila: conControles && !editablesAhora,
     esDeEstudiantes,
-    botonesDeEscritura: escriben.map((a) => a.etiqueta || a.id),
+    // Sin repetir: una tabla de 33 filas tiene 33 "Editar", y listarlos todos
+    // entierra el que importa. Lo que hace falta saber es QUÉ acciones de
+    // escritura hay, no cuántas filas las repiten.
+    botonesDeEscritura: [...new Set(escriben.map((a) => a.etiqueta || a.id))],
     acciones: salida.acciones.map((a) => ({ etiqueta: a.etiqueta, id: a.id, clase: a.clase, escribe: a.escribe })),
     siguiente: !tabla
       ? (conFiltroSinElegir.length
