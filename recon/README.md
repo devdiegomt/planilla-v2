@@ -8,6 +8,7 @@ Este paso existe para **no adivinar selectores**.
 | `sonda-v3-export.js` | **sí, un POST** (el mismo del botón Exportar) | formato del archivo exportado |
 | `sonda-v4-xls.js` | **sí, un POST** (idem) | parsea el `.xls` y vuelca el layout de la hoja |
 | `sonda-conscalifica.js` | no, lectura pura de DOM | otra pantalla: `ConsCalificaDocentesGen` (24), la de los cuatro periodos |
+| `sonda-pantalla.js` | no, lectura pura de DOM | **genérica**: sirve para cualquier pantalla. Es la que hay que usar para una nueva. |
 
 ## Hallazgos confirmados
 
@@ -183,3 +184,31 @@ sondas falsas que sí escriben y verifica que la foto las delate.
 ```bash
 node recon/pruebas/prueba-sondas.mjs   # va también en `npm test`
 ```
+
+## La sonda genérica — para las pantallas que faltan
+
+`sonda-pantalla.js` hace lo mismo que las anteriores pero **sin saber en qué
+pantalla está**. Existe porque ya se escribió dos veces casi la misma sonda, y
+cada lección que salió de usarlas hubo que aplicarla a mano en cada copia:
+
+- el número de las fotos también tiene 10 dígitos y **no** es el COD_ALUM;
+- una tabla de maquetado (muchas filas, una columna) **no** es una tabla de datos;
+- un `<input type="image">` es un submit, no un botón desconocido.
+
+Con una sola, la próxima lección se arregla en un solo lugar.
+
+Sirve para las que quedan en `CATALOGO.md` como "por verificar": matriz de
+actividades (831), planeador (803), seguimiento (853), actas (875).
+
+Además de lo que ya reportaban las otras, contesta **la pregunta de seguridad de
+este repo**: si la pantalla escribe. Mira los botones (Guardar, Importar,
+Grabar…) y también si las celdas de la tabla son editables, que es la forma
+silenciosa de que una pantalla escriba. Si escribe, lo dice en rojo en la
+consola antes que cualquier otra cosa.
+
+Cómo usarla: abrí la pantalla, cargala hasta ver datos, `F12` → Console → pegá
+el archivo → Enter. Si no hay tabla y hay un filtro en `< TODOS >`, el veredicto
+señala ese filtro en vez de dar un consejo genérico.
+
+`sonda-conscalifica.js` queda por ahora: la genérica la reemplaza, pero conviene
+correr la nueva en una pantalla real antes de borrar la que ya funcionó.
