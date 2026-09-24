@@ -171,6 +171,10 @@ materia de un solo docente.
   con nombre (`Descripción`, `Porcentaje`, `Ciclo`, `Destino`), que son las que
   hacen falta.
 - `lstPeriodo` trae **solo el periodo en curso** (`03`), como las planillas.
+- **La tabla no aparece sola.** Hay que elegir una materia concreta y pulsar
+  **Consultar** (`btnRefresca`); con la materia en `<TODOS>` (value `0`) no dibuja
+  nada. Y **cambiar de curso deja la materia sin elegir y vacía la tabla**, así
+  que el recorrido es curso → materia → Consultar, tres postbacks por curso.
 
 ### PlaneadorClase (803), medido el 24/09/2026
 

@@ -55,14 +55,31 @@
 
   const CLAVE_ESTADO = 'gla_actividades_estado_v1';
   const ESPERA_MS = 1500;
-  const MAX_INTENTOS = 3;
+  const MAX_INTENTOS = 5;   // curso + materia + consultar, con margen
   const MAX_CARGAS = 60;
 
   const P = 'ctl00_ContentPlaceHolder1_';
   const N = 'ctl00$ContentPlaceHolder1$';
   const ID = { curso: P + 'lstCurso', materia: P + 'lstMateria', periodo: P + 'lstPeriodo',
                tabla: P + 'gvActividades', profesor: P + 'hfProfesor' };
-  const NOMBRE = { curso: N + 'lstCurso' };
+  const NOMBRE = { curso: N + 'lstCurso', materia: N + 'lstMateria', consultar: N + 'btnRefresca' };
+
+  /*
+   * Lo ÚNICO que este script puede disparar.
+   *
+   * La pantalla tiene "Editar" y "Actualizar" en cada fila, que son los que
+   * escriben, y "Descargar a Excel". Una lista blanca corta por lo sano: si
+   * alguna vez alguien agrega un paso y se equivoca de control, revienta acá en
+   * vez de guardar algo en la plataforma. Es más barato que acordarse.
+   */
+  const PERMITIDOS = new Set([NOMBRE.curso, NOMBRE.materia, NOMBRE.consultar]);
+
+  function postear(nombreCtrl) {
+    if (!PERMITIDOS.has(nombreCtrl)) {
+      throw new Error('control no permitido para este script: ' + nombreCtrl);
+    }
+    window.__doPostBack(nombreCtrl, '');
+  }
 
   const ES_USERSCRIPT = (typeof GM_info !== 'undefined');
 
@@ -194,8 +211,32 @@
     if (!sel) throw new Error('no encuentro el selector de curso');
     if (lim(valor) === '%') throw new Error('nunca se selecciona "< TODOS >"');
     if ($$ && $$.fn) $$(sel).val(valor).trigger('change.select2'); else sel.value = valor;
-    window.__doPostBack(NOMBRE.curso, '');
+    postear(NOMBRE.curso);
   }
+
+  /**
+   * Elige una materia concreta.
+   *
+   * Hace falta porque **cambiar de curso deja la materia sin elegir y la tabla
+   * vacía**. La primera versión no lo hacía y la corrida entera volvió con
+   * "no hay tabla en pantalla" para los cuatro cursos: el `< TODOS >` de la
+   * materia no dibuja nada.
+   */
+  function ponerMateria(valor) {
+    const sel = el(ID.materia);
+    if (!sel) throw new Error('no encuentro el selector de materia');
+    if ($$ && $$.fn) $$(sel).val(valor).trigger('change.select2'); else sel.value = valor;
+    postear(NOMBRE.materia);
+  }
+
+  /** Las materias que son una materia, no el "< TODOS >". */
+  const materiasConcretas = () => {
+    const sel = el(ID.materia);
+    return [...(sel ? sel.options : [])].filter((o) => {
+      const v = lim(o.value);
+      return v && v !== '%' && v !== '0';
+    });
+  };
 
   const valorDe = (id) => { const s = el(id); return s ? lim(s.value) : null; };
 
@@ -251,6 +292,27 @@
       }
       estado.intentos[curso] = intentos + 1; persistir();
       return dispararPostback(`curso → ${curso}`, () => ponerCurso(opcion.value));
+    }
+
+    // --- La materia, que el cambio de curso deja sin elegir ---
+    const materias = materiasConcretas();
+    const materiaActual = lim(valorDe(ID.materia));
+    const sinMateria = !materiaActual || materiaActual === '%' || materiaActual === '0';
+    if (sinMateria && materias.length) {
+      estado.intentos[curso] = intentos + 1; persistir();
+      return dispararPostback(`materia → ${lim(materias[0].text)}`,
+        () => ponerMateria(materias[0].value));
+    }
+
+    /*
+     * --- Consultar ---
+     * No alcanza con elegir: la tabla no aparece hasta pulsar "Consultar".
+     * Es una consulta, no una escritura: refresca lo que se muestra y no toca
+     * nada. Se dispara por su nombre, que está en la lista blanca.
+     */
+    if (!el(ID.tabla)) {
+      estado.intentos[curso] = intentos + 1; persistir();
+      return dispararPostback('consultar', () => postear(NOMBRE.consultar));
     }
 
     const lectura = leerTabla();
@@ -340,9 +402,12 @@
 
   function refrescarCosto() {
     const n = armarPlan($('#ga-todos').checked).length;
-    const min = Math.max(1, Math.ceil((n * ESPERA_MS) / 60000));
+    // Hasta tres por curso: elegirlo, elegir la materia —que el cambio de curso
+    // deja sin elegir— y Consultar, sin el cual la tabla no aparece.
+    const tope = n * 3;
+    const min = Math.max(1, Math.ceil((tope * ESPERA_MS) / 60000));
     $('#ga-costo').textContent = n
-      ? `${n} curso(s) = ${n} recargas, aprox. ${min}–${min * 2} min.`
+      ? `${n} curso(s) = hasta ${tope} recargas, aprox. ${min}–${min * 2} min.`
       : 'No encuentro cursos en el desplegable.';
   }
   $('#ga-todos').onchange = refrescarCosto;
