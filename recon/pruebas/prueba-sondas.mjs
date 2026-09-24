@@ -198,6 +198,89 @@ ok(/TODOS/.test(rt.veredicto.siguiente),
 ok(!/emparejar por nombre/.test(rt.veredicto.siguiente),
    'en vez de deducir que falta el COD_ALUM de una tabla que no existe');
 
+// --- 3e. La sonda genérica, en una pantalla que nunca vimos ---------------
+// Es la que sirve para las que faltan (831, 803, 853). Lo que hay que
+// garantizar es lo mismo: que no escriba, y que lo que informe sea cierto.
+console.log('\nLa sonda genérica');
+
+const GENERICA = 'recon/sonda-pantalla.js';
+const generica = readFileSync(GENERICA, 'utf8');
+
+for (const prohibido of ['fetch(', 'XMLHttpRequest', '__doPostBack(', '.click(', '.submit(', 'dispatchEvent(']) {
+  ok(!generica.includes(prohibido), `no usa ${prohibido}`);
+}
+
+// Una pantalla inventada: una matriz de actividades con celdas editables y un
+// botón Guardar. Es el caso que MÁS importa reconocer, porque ahí automatizar
+// significaría escribir.
+const matriz = `<!doctype html><html><body>
+<form name="aspnetForm" id="aspnetForm" method="post" action="./DefActividadDocentePorcMatriz.aspx">
+  <input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="${'x'.repeat(9000)}">
+  <img id="ctl00_FotoMenu" src="../Fotos/1099999999.jpg">
+  <select name="lstCurso" id="lstCurso" onchange="javascript:__doPostBack('lstCurso','')">
+    <option value="%">&lt; TODOS &gt;</option><option value="801  " selected>801</option>
+  </select>
+  <input type="text" id="txtFecha" name="txtFecha" value="30/07/2026">
+  <input type="submit" id="btnGuardar" name="btnGuardar" value="Guardar">
+  <input type="image" id="btnExportar" name="btnExportar" alt="Exportar a Excel">
+  <table id="gvActividades">
+    <tr><th>Código</th><th>Actividad</th><th>Porcentaje</th><th>Categoría</th></tr>
+    <tr><td>2019034387</td><td>QUIZ UNO</td><td><input name="p1" value="20"></td><td>K</td></tr>
+    <tr><td>2018044266</td><td>TALLER</td><td><input name="p2" value="30"></td><td>M</td></tr>
+    <tr><td>2021063533</td><td>PROYECTO</td><td><input name="p3" value="50"></td><td>U</td></tr>
+    <tr><td>2017004140</td><td>EXPOSICION</td><td><input name="p4" value="25"></td><td>C</td></tr>
+    <tr><td>2016011111</td><td>EVALUACION</td><td><input name="p5" value="25"></td><td>E</td></tr>
+  </table>
+</form></body></html>`;
+
+const domMatriz = new JSDOM(matriz, {
+  url: 'https://ejemplo/arrayanes/2026/Seguro/DefActividadDocentePorcMatriz.aspx',
+  runScripts: 'outside-only',
+});
+domMatriz.window.console = { log: () => {} };
+const fotoMatriz = foto(domMatriz.window);
+const rm = domMatriz.window.eval(generica);
+
+ok(fotoMatriz === foto(domMatriz.window), 'la página queda exactamente igual que antes');
+eq(rm.pantalla, 'DefActividadDocentePorcMatriz.aspx', 'dice en qué pantalla corrió, sin que se le diga');
+eq(rm.veredicto.hayTablaDeDatos, true, 'reconoce la tabla');
+eq(rm.veredicto.tablaMasProbable.id, 'gvActividades', 'y cuál es');
+
+// Lo que más importa de esta pantalla.
+eq(rm.veredicto.laPantallaEscribe, true, 'AVISA que la pantalla escribe');
+ok(rm.veredicto.botonesDeEscritura.includes('Guardar'), 'nombrando el botón');
+eq(rm.acciones.find(a => a.id === 'btnExportar').clase,
+   'envía el formulario (input type=image: postea name.x y name.y)',
+   'y clasifica el input type=image, que sin href ni onclick parecería desconocido');
+
+ok(rm.tablas.find(t => t.id === 'gvActividades').muestraFilas[0].celdas.some(c => /<input/.test(c)),
+   'marca las celdas editables: una tabla que se puede escribir no es la misma cosa que una de consulta');
+eq(rm.campos.find(c => c.id === 'txtFecha').valor, '30/07/2026',
+   'lee los campos de texto, que también son filtros y se olvidan');
+
+// Privacidad, sobre la salida real.
+ok(!/QUIZ|TALLER|PROYECTO/.test(JSON.stringify(rm.tablas)),
+   'el texto de las celdas sale enmascarado');
+ok(rm.ocultos.find(h => h.name === '__VIEWSTATE').valor.startsWith('<omitido'),
+   'y el VIEWSTATE no viaja');
+eq(rm.diezDigitos.descartados.map(d => d.valor), ['1099999999'],
+   'la foto del encabezado sigue sin contar como código');
+
+// Sin tabla, el consejo apunta al filtro sin elegir.
+const vacia = matriz
+  .replace('<option value="%">&lt; TODOS &gt;</option><option value="801  " selected>801</option>',
+           '<option value="%" selected>&lt; TODOS &gt;</option><option value="801  ">801</option>')
+  .replace(/<table[\s\S]*<\/table>/, '');
+const domVacia = new JSDOM(vacia, {
+  url: 'https://ejemplo/arrayanes/2026/Seguro/DefActividadDocentePorcMatriz.aspx',
+  runScripts: 'outside-only',
+});
+domVacia.window.console = { log: () => {} };
+const rv = domVacia.window.eval(generica);
+eq(rv.veredicto.hayTablaDeDatos, false, 'sin tabla lo dice');
+ok(/lstCurso/.test(rv.veredicto.siguiente),
+   'y señala el filtro que está sin elegir, en vez de un consejo genérico');
+
 // --- 4. Que la prueba de arriba sirva de algo ---------------------------
 // Un arnés que nunca falla no prueba nada. Acá se corre a propósito algo que
 // SÍ escribe, y lo que se comprueba es que la foto lo delate: tanto el campo
