@@ -13,6 +13,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `asistencia-autofill.user.js` | Marca la asistencia diaria desde un JSON, con dry-run. | Solo si Diego pulsa Guardar |
 | `inventario-plataforma.user.js` | Recorre las pantallas del menú y captura su estructura. | No |
 | `historial-extractor.user.js` | Recorre `ConsCalificaDocentesGen` (24) y saca la **definitiva** de cada estudiante por periodo. Es la única fuente de T1 y T2. | No |
+| `actividades-extractor.user.js` | Saca de la matriz (831) el **porcentaje de cada logro**, por grado. Es lo que en planilla-app está fijo en `SLOTS_*` y ata la app a una sola materia. **Nunca pulsa Editar.** | No |
 | `verificar-planilla.mjs` | Compara un Califica descargado contra el generado por la app. Código 0 = se puede subir, 1 = bloqueante. | No (local) |
 | `recon/sonda-csp.js` | Mide si la CSP de la plataforma deja correr un bookmarklet, para saber si Tampermonkey se puede reemplazar. | No |
 | `recon/sonda-conscalifica.js` | Lee el DOM de `ConsCalificaDocentesGen` (24), la única pantalla con los cuatro periodos, para saber qué entrega antes de escribir el extractor. | No |
@@ -33,6 +34,12 @@ READMEs por herramienta: `README.md`, `README-asistencia.md`, `README-inventario
   (TODOS) se rechaza.
 - **Datos de estudiantes (menores):** nunca commitear `.xls`, `.json` ni capturas con
   nombres o códigos reales. Las pruebas usan archivos generados.
+- **Tampoco los de los colegas.** `lstFilProfesor` (planeador) trae los 203 docentes con
+  nombre completo. Las sondas enmascaran los textos de cualquier lista de más de 25
+  opciones: los ids alcanzan para armar un filtro y no identifican a nadie.
+- **Ninguna pantalla que escribe se automatiza sin decidirlo aparte.** La matriz (831)
+  escribe fila por fila con "Editar" → "Actualizar"; el extractor de actividades **no
+  pulsa ninguno de los dos** y lee el porcentaje del texto de la fila sin editar.
 
 ## Cómo trabajar
 
