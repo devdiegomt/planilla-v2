@@ -14,6 +14,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `inventario-plataforma.user.js` | Recorre las pantallas del menú y captura su estructura. | No |
 | `historial-extractor.user.js` | Recorre `ConsCalificaDocentesGen` (24) y saca la **definitiva** de cada estudiante por periodo. Es la única fuente de T1 y T2. | No |
 | `actividades-extractor.user.js` | Saca de la matriz (831) el **porcentaje de cada logro**, por grado. Es lo que en planilla-app está fijo en `SLOTS_*` y ata la app a una sola materia. **Nunca pulsa Editar.** | No |
+| `actividades-autofill.user.js` | **Llena** la matriz (831) con el plan que arma planilla-app: título, porcentaje, ciclo y destino. Fila por fila, y solo donde la pantalla coincide con lo que el plan dice que hay. | **Sí**, al pulsar Aplicar |
 | `verificar-planilla.mjs` | Compara un Califica descargado contra el generado por la app. Código 0 = se puede subir, 1 = bloqueante. | No (local) |
 | `recon/sonda-csp.js` | Mide si la CSP de la plataforma deja correr un bookmarklet, para saber si Tampermonkey se puede reemplazar. | No |
 | `recon/sonda-conscalifica.js` | Lee el DOM de `ConsCalificaDocentesGen` (24), la única pantalla con los cuatro periodos, para saber qué entrega antes de escribir el extractor. | No |
@@ -22,12 +23,25 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `recon/` | Sondas de reconocimiento y pruebas. | — |
 
 READMEs por herramienta: `README.md`, `README-asistencia.md`, `README-inventario.md`,
-`README-verificador.md`, `README-historial.md`; datos disponibles en `CATALOGO.md`.
+`README-verificador.md`, `README-historial.md`, `README-matriz.md`; datos disponibles
+en `CATALOGO.md`.
 
 ## Reglas de seguridad (no negociables)
 
-- **Nunca enviar `btnImportar`** ni ningún control de escritura en los POST. El único
-  camino de escritura automatizado es la asistencia, y se detiene antes de guardar.
+- **Nunca enviar `btnImportar`** ni ningún control de escritura en los POST.
+- **Los caminos de escritura son dos, y cada uno se decidió aparte.** La asistencia,
+  que se detiene antes de guardar; y la matriz de actividades (`actividades-autofill`,
+  decidido con Diego el 24/09/2026), que sí guarda pero solo cuando él pulsa "Aplicar",
+  y una vez por curso. Un camino nuevo no sale de "ya que estamos": se pregunta.
+- **Lo que hace segura la escritura de la matriz** no es el permiso, son cuatro cosas:
+  **nunca crea filas** (solo edita las que ya existen; la pantalla trae ocho casillas
+  por categoría usadas o no, así que estrenar una actividad es llenar una que ya está);
+  **verifica antes de escribir** (el plan trae lo que la app cree que hay hoy en cada
+  fila, y si la pantalla dice otra cosa esa fila no se toca — la posición sola no es
+  identidad); **nunca inventa un id** (los tres identificadores de la fila se leen de
+  la propia fila y se devuelven tal cual); y **una sola llamada a `__doPostBack`** con
+  lista blanca de control y de comando (`Edit$N` y `Update$N` de la tabla, nada más).
+  `npm test` comprueba las cuatro, y que romperlas se note.
 - Nunca disparar peticiones al cargar la página sin un clic de Diego (nada de reanudar
   solo). Una petición en vuelo a la vez, con espera entre posts.
 - Exportar "planillas por profesor" solo con el propio docente seleccionado; `-1`
