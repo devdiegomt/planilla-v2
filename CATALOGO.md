@@ -50,8 +50,8 @@ para nada, y el archivo no lo distingue por sí solo.
 | Notas por **periodo y corte** (1/2/3/Final × Único/C1/C2/Evaluación) | `ConsCalificaDocentesGen.aspx` (24) | **tabla en el DOM** (y botón Descargar Tabla) | **confirmado** — ver abajo |
 | Actas de reunión — 31 filas ya cargadas sin filtrar | `ActaReunionGLA.aspx` (875) | Excel | por verificar |
 | Seguimiento convivencial por curso | `Seguimientoacademicoyconvivencial.aspx` (853) | Excel | por verificar |
-| Definición de actividades y sus porcentajes | `DefActividadDocentePorcMatriz.aspx` (831) | Excel | por verificar |
-| Plan trimestral de asignatura (PTA) | `PlaneadorClase.aspx` (803) | Excel | por verificar |
+| Definición de actividades y sus porcentajes | `DefActividadDocentePorcMatriz.aspx` (831) | **tabla en el DOM** y Excel | **confirmado** — ver abajo |
+| Plan trimestral de asignatura (PTA) | `PlaneadorClase.aspx` (803) | **índice en el DOM**; el plan está detrás de Editar | **parcial** — ver abajo |
 | Reporte de mitad y final de trimestre | `NotificacionyobservacionGLA.aspx` (863) | Excel | por verificar |
 | Planillas de electivas | `ReporteCalificaMatrizElectiva.aspx` (1234) | Excel **y PDF** | por verificar |
 | Instructivos/circulares recibidas | `CircularesProf.aspx` (124) | tabla en pantalla | por verificar |
@@ -140,3 +140,37 @@ Lo que **no** hace falta: el código completo, capturas de la interfaz, ni la
 lógica de negocio. Con el esquema y el flujo manual armo el mapeo campo por
 campo y te digo qué sale de una petición, qué necesita otra pantalla, y qué no
 está disponible.
+
+### DefActividadDocentePorcMatriz (831), medido el 24/09/2026
+
+**Acá están los porcentajes.** `#ctl00_ContentPlaceHolder1_gvActividades`, una fila
+por actividad, con la columna **Porcentaje** (60, 40, 0…). Es la fuente de lo que en
+planilla-app está fijo en `SLOTS_8_10` / `SLOTS_11`, o sea lo que ataría la app a la
+materia de un solo docente.
+
+- Once columnas: `· Meta de comprensión · Descripción General · Descripción ·
+  id · cod_mat · id_logro · Porcentaje · · Ciclo · Destino`. La "Descripción" trae
+  el encabezado del trimestre tal cual (`T3 - C4. TÍTULO`), que es el mismo `desc`
+  que la app ya parsea.
+- **Destino**: Casa / Clase / Casa-Clase. **Ciclo**: 1 a 9, el ciclo de la app.
+- **El `cod_mat` acá es OTRO**: `lstMateria` da `1035` para Information Technology,
+  no `2508`/`2509`/`2510`. Son dos espacios de id distintos para la misma materia; el
+  planeador (803) sí usa los conocidos. No mezclarlos.
+- **Todo llega trabado**: los `<select>` deshabilitados y los `<textarea>` en solo
+  lectura. Se escribe fila por fila, pulsando "Editar". O sea que la pantalla
+  escribe, pero no en el estado en que se abre.
+- `lstPeriodo` trae **solo el periodo en curso** (`03`), como las planillas.
+
+### PlaneadorClase (803), medido el 24/09/2026
+
+`#ctl00_ContentPlaceHolder1_PlanAsignatura` es un **índice**, no el plan:
+`ID · Grado · Profesor · Materia · Trimestre · Directivo académico · Jefe de área`,
+con casillas de aprobación y un "Editar" por fila. El contenido del PTA está detrás
+de ese Editar, así que hace falta otra corrida ahí adentro.
+
+- Confirma los `cod_mat` conocidos: `2508`, `2509`, `2510` y `3011`
+  ("Informática y tecnología", los otros tres "Information Technology").
+- `lstPeriodo` vuelve a dar `01`, `02`, `03`, `05` — sin `04`.
+- `lstFilProfesor` trae **203 docentes con nombre completo**, y viene deshabilitado
+  para un docente. La sonda ahora enmascara los textos de las listas largas: son
+  personas reales que no eligieron estar en un JSON que se pega en un chat.
