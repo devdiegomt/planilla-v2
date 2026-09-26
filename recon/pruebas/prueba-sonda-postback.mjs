@@ -52,7 +52,24 @@ function montar({ conTabla = true } = {}) {
     </form></body>`, { url: 'https://x/arrayanes/Pantalla.aspx', runScripts: 'outside-only' });
   const w = dom.window;
   const peticiones = [];
-  w.fetch = (url, opciones) => { peticiones.push({ url, opciones }); return new Promise(() => {}); };
+  // Contesta como la plataforma: pagina nueva, VIEWSTATE nuevo y la tabla.
+  const respuestaNº = (n) => `<!doctype html><html><head><title>Classroom Live Web</title></head>
+    <body><form id="aspnetForm" action="Pantalla.aspx">
+      <input type="hidden" name="__VIEWSTATE" value="VS${n}">
+      <select name="lstCurso"><option value="80${n}" selected>80${n}</option></select>
+      <select name="lstMateria"><option value="1035" selected>IT</option></select>
+      <input type="submit" name="btnRefresca" value="Consultar">
+      <table><tr><td>a</td></tr><tr><td>b</td></tr><tr><td>c</td></tr><tr><td>d</td></tr></table>
+    </form></body></html>`;
+  w.fetch = (url, opciones) => {
+    peticiones.push({ url, opciones });
+    const n = peticiones.length;
+    return Promise.resolve({
+      ok: true, status: 200, redirected: false, url: 'https://x/Pantalla.aspx',
+      headers: { get: () => 'text/html' },
+      text: () => Promise.resolve(respuestaNº(n)),
+    });
+  };
   w.setTimeout = (fn) => { fn(); return 0; };
   w.performance = { now: () => 0 };
   // La sonda exporta sus partes cuando hay un `module` — asi se pueden probar
@@ -129,6 +146,94 @@ console.log('\n[que dice del que contesta]');
     ok(mod.PROHIBIDO.test('gvActividades$ctl02$btnActualizar'), 'y un Actualizar');
     ok(!mod.PROHIBIDO.test('ctl00$ContentPlaceHolder1$btnRefresca'), 'y deja pasar un Consultar');
   }
+}
+
+console.log('\n[la lista blanca: lo unico que puede disparar]');
+{
+  const p = montar();
+  const mod = p.w.module.exports;
+  // Una lista negra sola deja pasar cualquier nombre que nadie previo.
+  for (const bueno of ['ctl00$ContentPlaceHolder1$lstCurso',
+                       'ctl00$ContentPlaceHolder1$lstMateria',
+                       'ctl00$ContentPlaceHolder1$btnRefresca']) {
+    ok(mod.sePuedeDisparar(bueno), `deja pasar ${bueno.split('$').pop()}`);
+  }
+  for (const malo of ['ctl00$ContentPlaceHolder1$btnGuardar',
+                      'ctl00$ContentPlaceHolder1$btnImportar',
+                      'gvActividades$ctl02$btnActualizar',
+                      'ctl00$ContentPlaceHolder1$gvActividades',
+                      'ctl00$ContentPlaceHolder1$btnDescargaExcel',
+                      'ctl00$ContentPlaceHolder1$btnCualquierCosaNueva']) {
+    ok(!mod.sePuedeDisparar(malo), `NO deja pasar ${malo.split('$').pop()}`);
+  }
+  ok(!mod.sePuedeDisparar(''), 'ni un nombre vacio');
+}
+
+console.log('[el recorrido encadenado]');
+{
+  const p = montar();
+  p.$('#sp-cadena').click();
+  eq(p.peticiones.length, 1, 'el recorrido arranca con UN envio, no con tres de golpe');
+  const cuerpo = new URLSearchParams(p.peticiones[0].opciones.body);
+  eq(cuerpo.get('__EVENTTARGET'), 'lstCurso', 'el primer paso dispara el selector de curso');
+  ok(!cuerpo.has('btnGuardar'), 'y sigue sin llevar el boton de guardar');
+  const antes = p.w.document.getElementById('aspnetForm').innerHTML;
+  eq(p.w.document.getElementById('aspnetForm').innerHTML, antes, 'sin tocar la pantalla');
+}
+
+console.log('[encadenar significa usar el VIEWSTATE que vuelve]');
+{
+  const p = montar();
+  const mod = p.w.module.exports;
+  const respuesta = `<!doctype html><html><body><form id="aspnetForm">
+    <input type="hidden" name="__VIEWSTATE" value="SEGUNDO">
+    <select name="lstCurso"><option value="802" selected>802</option></select>
+    <input type="submit" name="btnGuardar" value="Guardar"></form></body></html>`;
+  const sig = mod.camposDeRespuesta(respuesta);
+  eq(sig.datos.get('__VIEWSTATE'), 'SEGUNDO',
+     'los campos del siguiente envio salen de la RESPUESTA, no de la pantalla');
+  eq(sig.datos.get('lstCurso'), '802', 'con el estado que dejo el paso anterior');
+  ok(!sig.datos.has('btnGuardar'), 'y tampoco arrastra botones de submit');
+  eq(mod.camposDeRespuesta('<p>no es la pagina</p>'), null, 'si no vuelve el formulario, lo dice');
+}
+
+console.log('[postear se niega a disparar un control de escritura]');
+{
+  const p = montar();
+  const mod = p.w.module.exports;
+  let msg = '';
+  // No basta con que la lista exista: tiene que estar EN el camino del envio.
+  await mod.postear('Pantalla.aspx', new p.w.URLSearchParams(),
+                    'ctl00$ContentPlaceHolder1$btnGuardar').catch((e) => { msg = e.message; });
+  ok(/no permitido/.test(msg), 'con un Guardar revienta antes de tocar la red');
+  eq(p.peticiones.length, 0, 'y no sale ninguna peticion');
+
+  msg = '';
+  await mod.postear('Pantalla.aspx', new p.w.URLSearchParams(), 'ctl00$x$lstCurso')
+    .catch((e) => { msg = e.message; });
+  eq(msg, '', 'con un control de lectura si envia');
+  eq(p.peticiones.length, 1, 'una peticion');
+}
+
+console.log('[la cadena usa el VIEWSTATE que vuelve]');
+{
+  const p = montar();
+  p.$('#sp-cadena').click();
+  // Dejar que las promesas del recorrido corran.
+  for (let i = 0; i < 40; i++) await new Promise((r) => setImmediate(r));
+
+  eq(p.peticiones.length, 3, 'el recorrido son TRES envios: curso, materia y consultar');
+  const cuerpos = p.peticiones.map((x) => new URLSearchParams(x.opciones.body));
+  eq(cuerpos[0].get('__VIEWSTATE'), 'ABC', 'el primero lleva el de la pantalla');
+  eq(cuerpos[1].get('__VIEWSTATE'), 'VS1', 'el segundo, el que devolvio el primero');
+  eq(cuerpos[2].get('__VIEWSTATE'), 'VS2', 'y el tercero, el del segundo — eso es encadenar');
+  eq(cuerpos[1].get('__EVENTTARGET'), 'lstMateria', 'el segundo paso elige materia');
+  ok(cuerpos[2].has('btnRefresca'), 'y el tercero manda Consultar como campo, que es un submit');
+  ok(cuerpos.every((c) => !c.has('btnGuardar')), 'ninguno lleva el boton de guardar');
+
+  const r = JSON.parse(p.$('#sp-salida').textContent);
+  eq(r.recorrido.length, 3, 'el informe trae los tres pasos');
+  ok(/SE PUEDE RECORRER/.test(r.veredicto), 'y el veredicto lo dice');
 }
 
 console.log(fallos ? `\n✗ ${fallos} fallaron` : '\n✓ todo en verde');

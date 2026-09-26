@@ -42,6 +42,17 @@
    */
   const PROHIBIDO = /guardar|save|importar|actualizar|update|editar|edit|eliminar|delete|borrar|insert|nuevo|crear/i;
 
+  /*
+   * Y lo único que SÍ puede disparar: los desplegables del filtro y el botón
+   * de consultar. Los dos son lecturas. Una lista negra sola deja pasar
+   * cualquier nombre que nadie previó; con las dos, un control nuevo queda
+   * fuera por omisión.
+   */
+  const PERMITIDO = /(^|\$)(lst[A-Za-z]*|ddl[A-Za-z]*|btnRefresca|btnConsultar|btnBuscar)$/;
+
+  const sePuedeDisparar = (nombre) => !!nombre
+    && !PROHIBIDO.test(nombre) && PERMITIDO.test(nombre);
+
   /** El formulario de WebForms y todo lo que lleva escondido. */
   function leerFormulario() {
     const form = document.forms['aspnetForm'] || document.querySelector('form');
@@ -110,6 +121,51 @@
     };
   }
 
+  /**
+   * Un POST con el VIEWSTATE que traiga, no con el de la pantalla.
+   *
+   * Es lo que separa "el servidor contesta" de "se puede encadenar": a partir
+   * del segundo envío, el estado ya no es el que tiene el navegador abierto.
+   */
+  async function postear(accion, campos, eventTarget) {
+    if (eventTarget && !sePuedeDisparar(eventTarget)) {
+      throw new Error('control no permitido para esta sonda: ' + eventTarget);
+    }
+    campos.set('__EVENTTARGET', eventTarget || '');
+    campos.set('__EVENTARGUMENT', '');
+    const t0 = performance.now();
+    const r = await fetch(accion, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: campos.toString(), redirect: 'follow',
+    });
+    const html = await r.text();
+    return { r, html, ms: Math.round(performance.now() - t0) };
+  }
+
+  /** Los campos de una respuesta, para poder encadenar el siguiente envío. */
+  function camposDeRespuesta(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const form = doc.forms['aspnetForm'] || doc.querySelector('form');
+    if (!form) return null;
+    const datos = new URLSearchParams();
+    for (const el of form.querySelectorAll('input[name], select[name], textarea[name]')) {
+      if (el.disabled) continue;
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        if (el.checked) datos.append(el.name, el.value);
+        continue;
+      }
+      if (el.type === 'submit' || el.type === 'image' || el.type === 'button') continue;
+      datos.append(el.name, el.value);
+    }
+    return { doc, form, datos };
+  }
+
+  /** El primer desplegable cuyo nombre termine en `sufijo`, en una respuesta. */
+  const selectDe = (form, sufijo) =>
+    [...form.querySelectorAll('select[name]')].find((s) => s.name.endsWith(sufijo));
+
+
   // --- Panel ----------------------------------------------------------------
 
   const panel = document.createElement('div');
@@ -138,7 +194,8 @@
   </div>
   <div id="sp-estado"></div>
   <div>
-    <button id="sp-ir" class="p">Medir</button>
+    <button id="sp-ir" class="p">Medir (1 envío)</button>
+    <button id="sp-cadena">Medir el recorrido (3 envíos)</button>
     <button id="sp-copiar">Copiar resultado</button>
   </div>
   <pre id="sp-salida">Pulsá "Medir".</pre>
@@ -170,23 +227,18 @@
     }
 
     const cuerpo = armarCuerpo(info.form, objetivo, '');
-    const t0 = performance.now();
     try {
-      const r = await fetch(info.accion, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: cuerpo.toString(),
-        redirect: 'follow',
-      });
-      const html = await r.text();
+      // Por `postear` y no con un fetch propio: una sola llamada a la red en
+      // todo el archivo, con la comprobación del control adentro. Dos sitios
+      // que envían son dos sitios donde olvidarse de comprobar.
+      const { r, html, ms } = await postear(info.accion, cuerpo, objetivo);
       resultado = {
         medidoEn: new Date().toISOString(),
         pantalla: location.pathname.split('/').pop(),
         peticion: {
           ok: r.ok, status: r.status, tipo: r.headers.get('content-type'),
           redirigido: r.redirected, urlFinal: r.url.split('/').pop(),
-          ms: Math.round(performance.now() - t0),
+          ms,
           camposEnviados: [...cuerpo.keys()].length,
         },
         respuesta: medirRespuesta(html, info.ocultos['__VIEWSTATE']),
@@ -209,6 +261,93 @@
       + 'Un favorito podría recorrer el filtro sin recargarse.';
   }
 
+  /*
+   * El recorrido de verdad, con `fetch` y sin recargar: cambiar de curso,
+   * elegir materia y consultar. Son los tres pasos que hace el extractor de
+   * actividades, y los tres son lecturas.
+   *
+   * Cada envío usa el VIEWSTATE del anterior, no el de la pantalla. Eso es lo
+   * que separa "el servidor contesta" de "se puede encadenar": si el segundo
+   * fallara, el mecanismo no sirve para recorrer nada.
+   */
+  $('#sp-cadena').onclick = async () => {
+    if (info.error) return;
+    $('#sp-cadena').disabled = true;
+    $('#sp-salida').textContent = 'Recorriendo…';
+    const pasos = [];
+
+    try {
+      let campos = armarCuerpo(info.form, '', '');
+      let form = info.form;
+
+      const plan = [
+        { que: 'cambiar de curso', sufijo: 'lstCurso', otra: true },
+        { que: 'elegir materia', sufijo: 'lstMateria', otra: false },
+        { que: 'consultar', nombre: null, consultar: true },
+      ];
+
+      for (const paso of plan) {
+        let objetivo = null;
+
+        if (paso.consultar) {
+          // "Consultar" es un submit: viaja como campo propio, no como evento.
+          const btn = [...form.querySelectorAll('input[type=submit][name]')]
+            .find((b) => sePuedeDisparar(b.name));
+          if (!btn) { pasos.push({ paso: paso.que, saltado: 'no hay botón de consultar' }); continue; }
+          campos.set(btn.name, btn.value || 'Consultar');
+        } else {
+          const sel = selectDe(form, paso.sufijo);
+          if (!sel) { pasos.push({ paso: paso.que, saltado: 'no está ' + paso.sufijo }); continue; }
+          const opciones = [...sel.options].filter((o) => o.value && o.value !== '0' && o.value !== '%');
+          if (!opciones.length) { pasos.push({ paso: paso.que, saltado: 'sin opciones' }); continue; }
+          // Para el curso, una DISTINTA de la actual: así se ve si cambió algo.
+          const elegida = paso.otra
+            ? (opciones.find((o) => o.value !== sel.value) || opciones[0])
+            : opciones[0];
+          campos.set(sel.name, elegida.value);
+          objetivo = sel.name;
+          paso.elegido = lim(elegida.text);
+        }
+
+        const { r, html, ms } = await postear(info.accion, campos, objetivo);
+        const sig = camposDeRespuesta(html);
+        const medida = medirRespuesta(html, campos.get('__VIEWSTATE'));
+        pasos.push({
+          paso: paso.que,
+          elegido: paso.elegido,
+          objetivo: objetivo || '(submit)',
+          status: r.status, ms,
+          viewStateNuevo: medida.viewStateNuevo,
+          pareceLogin: medida.pareceLogin,
+          tablasConDatos: medida.tablasConDatos,
+          filasDeLaMayor: medida.filasDeLaMayor,
+        });
+        if (!sig) break;
+        campos = sig.datos;
+        form = sig.form;
+      }
+
+      const ultimo = pasos[pasos.length - 1] || {};
+      resultado = {
+        medidoEn: new Date().toISOString(),
+        pantalla: location.pathname.split('/').pop(),
+        recorrido: pasos,
+        veredicto: pasos.some((p) => p.pareceLogin)
+          ? 'La sesión se cayó a mitad del recorrido.'
+          : pasos.some((p) => p.status && p.status !== 200)
+            ? 'Algún paso no contestó 200.'
+            : ultimo.filasDeLaMayor > 3
+              ? 'SE PUEDE RECORRER: los tres pasos con fetch y la tabla volvió al final. '
+                + 'Un favorito puede hacer lo que hoy pide Tampermonkey.'
+              : 'Los envíos pasaron pero al final no vino la tabla.',
+      };
+    } catch (e) {
+      resultado = { error: e.message, pasos };
+    }
+    $('#sp-salida').textContent = JSON.stringify(resultado, null, 2);
+    $('#sp-cadena').disabled = false;
+  };
+
   $('#sp-copiar').onclick = async () => {
     if (!resultado) return;
     try {
@@ -219,6 +358,9 @@
   };
 
   if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { leerFormulario, armarCuerpo, medirRespuesta, PROHIBIDO };
+    module.exports = {
+      leerFormulario, armarCuerpo, medirRespuesta, camposDeRespuesta, postear,
+      PROHIBIDO, PERMITIDO, sePuedeDisparar,
+    };
   }
 })();

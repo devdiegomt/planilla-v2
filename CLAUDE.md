@@ -102,11 +102,17 @@ de actividades, al de historial y al autofill de la matriz, que recorren.
 WebForms manda el formulario entero por POST y devuelve la página entera; si ese
 mismo envío se hace con `fetch` y el DOM se actualiza con lo que vuelve, la
 página nunca se recarga y el favorito no muere — es lo que hace un UpdatePanel.
-`recon/sonda-postback.js` mide si el servidor colabora: si acepta el POST desde
-`fetch`, si contesta la página en vez del login, y si trae un **`__VIEWSTATE`
-nuevo** (sin eso el segundo postback ya falla). La sonda **no implementa** el
-mecanismo: manda un envío de "vuelve a dibujar la misma página" —sin ningún
-control, ni siquiera Consultar—, lo mide y lo tira, sin tocar el DOM.
+`recon/sonda-postback.js` lo mide, y **el 26/09/2026 dio que SÍ**: sobre la
+matriz (831), 200 en 177 ms, sin redirect, sin login, con `__VIEWSTATE` nuevo y
+la tabla de 34 filas de vuelta. El estado de los filtros sobrevive, porque los
+`<select>` viajan como campos. Ver `CATALOGO.md`.
+La sonda **no implementa** el mecanismo: manda envíos de lectura, los mide y los
+tira, sin tocar el DOM. Tiene lista negra (Guardar, Importar, Actualizar,
+Editar, Eliminar) **y lista blanca** (`lst*`, `ddl*`, `btnRefresca`): con la
+negra sola, un control nuevo que nadie previó pasaría.
+**Lo que falta medir** es del lado del cliente: que reemplazar el DOM con la
+respuesta deje la página funcionando. El servidor, que era lo que podía matar la
+idea de un plumazo, colabora.
 
 El autofill es `@grant none` —no usa APIs de Tampermonkey— así que el mismo
 archivo sirve de userscript y de favorito. `GM_info` solo se usa para detectar
