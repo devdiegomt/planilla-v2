@@ -13,7 +13,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `asistencia-autofill.user.js` | Marca la asistencia diaria desde un JSON, con dry-run. | Solo si Diego pulsa Guardar |
 | `inventario-plataforma.user.js` | Recorre las pantallas del menú y captura su estructura. | No |
 | `historial-extractor.user.js` | Recorre `ConsCalificaDocentesGen` (24) y saca la **definitiva** de cada estudiante por periodo. Es la única fuente de T1 y T2. | No |
-| `actividades-extractor.user.js` | Saca de la matriz (831) el **porcentaje de cada logro**, por grado. Es lo que en planilla-app está fijo en `SLOTS_*` y ata la app a una sola materia. **Nunca pulsa Editar.** | No |
+| `actividades-extractor.user.js` | Saca de la matriz (831) el **porcentaje de cada logro**, por grado. Recorre con `fetch`, **sin recargar**, así que sirve como favorito. **Nunca pulsa Editar.** | No |
 | `actividades-autofill.user.js` | **Llena** la matriz (831) con el plan que arma planilla-app: título, porcentaje, ciclo y destino. Fila por fila, y solo donde la pantalla coincide con lo que el plan dice que hay. | **Sí**, al pulsar Aplicar |
 | `verificar-planilla.mjs` | Compara un Califica descargado contra el generado por la app. Código 0 = se puede subir, 1 = bloqueante. | No (local) |
 | `recon/sonda-csp.js` | Mide si la CSP de la plataforma deja correr un bookmarklet, para saber si Tampermonkey se puede reemplazar. | No |
@@ -98,7 +98,7 @@ y se usa **"Solo marcar"**, que no navega hasta el guardado y verifica que la
 pantalla coincida con el JSON antes de marcar. Lo mismo deja fuera al extractor
 de actividades, al de historial y al autofill de la matriz, que recorren.
 
-**Pero la limitación vale mientras el postback NAVEGUE**, y eso está sin medir.
+**Pero la limitación valía mientras el postback NAVEGARA**, y eso ya se midió.
 WebForms manda el formulario entero por POST y devuelve la página entera; si ese
 mismo envío se hace con `fetch` y el DOM se actualiza con lo que vuelve, la
 página nunca se recarga y el favorito no muere — es lo que hace un UpdatePanel.
@@ -110,9 +110,23 @@ La sonda **no implementa** el mecanismo: manda envíos de lectura, los mide y lo
 tira, sin tocar el DOM. Tiene lista negra (Guardar, Importar, Actualizar,
 Editar, Eliminar) **y lista blanca** (`lst*`, `ddl*`, `btnRefresca`): con la
 negra sola, un control nuevo que nadie previó pasaría.
-**Lo que falta medir** es del lado del cliente: que reemplazar el DOM con la
-respuesta deje la página funcionando. El servidor, que era lo que podía matar la
-idea de un plumazo, colabora.
+**El recorrido entero también se midió** (26/09/2026): curso → materia →
+consultar, los tres con `fetch`, y la tabla de 34 filas al final. Reproduce la
+misma máquina de estados que en el navegador —tras el curso no hay tabla, tras
+la materia tampoco— así que no es un camino degradado: es la pantalla.
+
+**`actividades-extractor` ya está portado.** Recorre con `fetch` y **nunca toca
+el DOM de la pantalla abierta**: lo que vuelve se lee con DOMParser y se tira.
+Eso se llevó por delante las 64 líneas de máquina de estados —sessionStorage,
+reintentos, tope de cargas, reentrada tras cada recarga— que existían *solo*
+porque la página se recargaba. Sin recargas es un bucle.
+**Un bug que salió del port:** el valor del curso viaja ahora en el cuerpo del
+POST, y en la plataforma esos valores **traen espacios al final** (`'1101 '`).
+Mientras se navegaba daba igual, porque se asignaba `sel.value` y el navegador
+emparejaba la opción; recortado, se manda un curso que el servidor no reconoce.
+Se guarda el bruto para enviar y el recortado para mostrar.
+**Lo que falta medir** es reemplazar el DOM con la respuesta, que haría falta
+para el autofill de la matriz. Los extractores no lo necesitan: solo leen.
 
 El autofill es `@grant none` —no usa APIs de Tampermonkey— así que el mismo
 archivo sirve de userscript y de favorito. `GM_info` solo se usa para detectar
