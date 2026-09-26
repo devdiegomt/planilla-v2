@@ -175,6 +175,16 @@ materia de un solo docente.
   **Consultar** (`btnRefresca`); con la materia en `<TODOS>` (value `0`) no dibuja
   nada. Y **cambiar de curso deja la materia sin elegir y vacía la tabla**, así
   que el recorrido es curso → materia → Consultar, tres postbacks por curso.
+- **La posición dentro de la meta es la llave para escribir**, contando también las
+  casillas sin usar: es el número de fila tal como se ve. El rótulo de la columna
+  "Descripción General" sería más bonito, pero **no se ha visto en ninguna corrida
+  real**, así que no se depende de él. Una casilla sin usar se reconoce porque **no
+  trae columna**: dice `ACT.3` a secas y una de verdad dice `T3 - C4. TÍTULO`.
+- **Los cinco `<input type=text>` de la fila en edición van en este orden**: id de
+  actividad, `cod_mat`, id del logro, **porcentaje** y rótulo. El porcentaje es el
+  cuarto, y eso es posicional, así que `actividades-autofill` lo **comprueba** contra
+  lo que el plan dice que hay antes de escribirlo: con una columna nueva pararía en
+  vez de escribir un porcentaje encima de un id.
 - **Ocho casillas por categoría, usadas o no.** De 33 filas, 10 u 11 son
   actividades reales; el resto viene en 0 % y con la descripción repitiendo el
   rótulo (`ACT.3`). El extractor las descarta y **dice cuántas** (`casillasSinUsar`):

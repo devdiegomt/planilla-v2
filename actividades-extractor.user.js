@@ -175,7 +175,8 @@
 
     const cuerpo = tabla.tBodies[0] || tabla;
     const actividades = [];
-    let vacias = 0;
+    const porMeta = new Map();
+    const vacias = [];
     for (const f of [...cuerpo.rows].filter((r) => !r.querySelector('th'))) {
       const celda = (i) => (i >= 0 ? valorCelda(f.cells[i]) : '');
       const descripcion = celda(mapa.descripcion);
@@ -183,20 +184,44 @@
       // Sin descripción no es una actividad: es el pie del GridView.
       if (!descripcion) continue;
       /*
+       * La posición dentro de su meta cuenta TAMBIÉN las casillas sin usar,
+       * porque es el número de fila en la pantalla y es así como se empareja
+       * al escribir. Contando solo las llenas, la tercera actividad de una
+       * meta con un hueco antes apuntaría a la fila de al lado.
+       */
+      const meta = celda(mapa.meta);
+      porMeta.set(meta, (porMeta.get(meta) ?? 0) + 1);
+      const posicion = porMeta.get(meta);
+      /*
        * Las casillas sin usar.
        *
        * La tabla trae ocho actividades por categoría estén usadas o no; las
        * vacías vienen con 0 % y con la descripción repitiendo el rótulo
        * ("ACT.3"). Medido: de 33 filas, solo 10 u 11 son actividades reales.
+       *
+       * Se reconocen porque **no traen columna**: una actividad de verdad dice
+       * "T3 - C4. TÍTULO" y una vacía dice "ACT.3" a secas. Antes esto miraba
+       * si la descripción repetía la "Descripción General", y eso era una
+       * suposición: esa columna no se había visto en ninguna corrida real.
+       * La columna sí, en todas.
+       *
        * Se cuentan y se dicen, no se tiran en silencio: si alguna vez una
        * actividad de verdad quedara en 0 % habría que poder notarlo.
        */
-      if (!porcentaje && norm(descripcion) === norm(celda(mapa.general))) {
-        vacias++;
+      if (!porcentaje && !/T\s*\d+\s*[-–—]\s*C\s*\d+/i.test(descripcion)) {
+        // Con su meta y su posición, no solo contadas: son las casillas que el
+        // formulario de la app puede ofrecer para estrenar una actividad. La
+        // fila ya existe en la plataforma, que es lo que hace posible
+        // escribirla sin inventar ningún id.
+        vacias.push({ meta, posicion, descripcion });
         continue;
       }
       actividades.push({
-        meta: celda(mapa.meta),
+        meta,
+        // Dentro de su meta, la fila número N de la pantalla. Es como se
+        // empareja al escribir: el rótulo de la columna "Descripción General"
+        // no se ha visto nunca en una corrida real, así que no se depende de él.
+        posicion,
         general: celda(mapa.general),
         descripcion,
         porcentaje,
@@ -347,7 +372,7 @@
       casillasSinUsar: lectura.vacias,
     });
     const suma = lectura.actividades.reduce((a, x) => a + (x.porcentaje || 0), 0);
-    anotar(`✔ ${curso}: ${lectura.actividades.length} actividades (${lectura.vacias} casillas sin usar), suman ${suma}%.`);
+    anotar(`✔ ${curso}: ${lectura.actividades.length} actividades (${lectura.vacias.length} casillas sin usar), suman ${suma}%.`);
     estado.i++; estado.intentos[curso] = 0; persistir(); refrescarPanel();
     return continuar();
   }

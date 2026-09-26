@@ -21,7 +21,10 @@ const CURSOS = ['801  ', '802  ', '901  ', '1101 '];
 // Porcentajes distintos por grado: si el recorrido repitiera una pantalla o se
 // saltara un grado, saldrían iguales donde deberían diferir.
 // El 0 es una casilla sin usar: la pantalla trae ocho por categoría, usadas o no.
-const PCT = { 8: [60, 40, 0], 9: [70, 30, 0], 11: [50, 50, 0] };
+// El 0 del medio es una casilla sin usar: la pantalla trae ocho por categoría,
+// usadas o no. Va en el medio a propósito, para que la posición de la que sigue
+// solo salga bien si se cuentan también las vacías.
+const PCT = { 8: [60, 0, 40], 9: [70, 0, 30], 11: [50, 0, 50] };
 const gradoDe = (c) => (c.trim().length >= 4 ? Number(c.trim().slice(0, 2)) : Number(c.trim()[0]));
 
 // Los tres encabezados vacíos son los de los ids internos, tal cual la pantalla.
@@ -56,7 +59,8 @@ function crear({ columnaExtra = false, filaEnEdicion = false, sinTabla = false }
       const edit = filaEnEdicion && i === 0;
       // En edición el texto se va al value del input y la celda queda vacía.
       const celdaPct = edit ? `<input name="${n}$ctl05" value="${p}">` : String(p);
-      // Una casilla sin usar repite el rótulo como descripción y va en 0 %.
+      // Una casilla sin usar va en 0 % y SIN columna: dice "ACT.3" a secas,
+      // mientras que una actividad de verdad dice "T3 - C4. TÍTULO".
       const texto = p === 0 ? `ACT.${i + 1}` : `T3 - C${4 + i}. TITULO ${i}`;
       const celdaDesc = edit
         ? `<textarea name="${n}$descripcion">${texto}</textarea>`
@@ -175,8 +179,12 @@ console.log('\n[el porcentaje]');
   eq(s.cursos[0].actividades[0].ciclo, 'Ciclo 1', 'el ciclo');
   eq(s.cursos[0].actividades[0].destino, 'Clase', 'y el destino');
   eq(s.cursos[0].actividades.length, 2, 'sin contar el pie del GridView');
-  eq(s.cursos[0].casillasSinUsar, 1,
-     'y la casilla sin usar no entra, pero se cuenta: si una actividad real quedara en 0% hay que poder notarlo');
+  eq(s.cursos[0].casillasSinUsar.map((v) => v.posicion), [2],
+     'y la casilla sin usar no entra, pero queda con su posición: es la que el formulario puede ofrecer para estrenar una actividad');
+  eq(s.cursos[0].casillasSinUsar.length, 1,
+     'se cuenta: si una actividad real quedara en 0% hay que poder notarlo');
+  eq(s.cursos[0].actividades.map((a) => a.posicion), [1, 3],
+     'la posición cuenta también las vacías: es el número de fila en la pantalla, que es como se empareja al escribir');
 }
 
 console.log('\n[una columna nueva no corre la lectura]');
