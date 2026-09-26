@@ -1,11 +1,18 @@
 /*
- * Pruebas del extractor de actividades, sobre un jsdom que replica
- * DefActividadDocentePorcMatriz.aspx: mismos ids, mismos encabezados —con las
- * tres columnas SIN nombre incluidas— y el mismo "Editar" por fila.
+ * Pruebas del extractor de actividades.
+ *
+ * El recorrido ya no navega: pide las páginas con `fetch`, así que el arnés
+ * **contesta como el servidor** en vez de simular postbacks. Reproduce la
+ * máquina de estados que se midió contra la plataforma el 26/09/2026:
+ *
+ *   curso    → 200, sin tabla (el cambio de curso deja la materia sin elegir)
+ *   materia  → 200, sin tabla (elegir no alcanza)
+ *   consultar→ 200, CON tabla
  *
  * Lo que hay que garantizar, en orden: que NO escriba (la pantalla sí escribe,
- * y es la primera vez que automatizamos una que puede), que lea el porcentaje
- * correcto, y que una columna nueva no corra la lectura.
+ * y es la primera que automatizamos que puede), que no toque el DOM de la
+ * pantalla abierta, que lea el porcentaje correcto, y que una columna nueva no
+ * corra la lectura.
  */
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
@@ -37,30 +44,24 @@ function crear({ columnaExtra = false, filaEnEdicion = false, sinTabla = false }
   const w = dom.window;
   const postbacks = [];
   const clicks = [];
+  const enviados = [];
+  // Si el script llamara a alguno de estos, es un fallo: ya no debe hacerlo.
   w.__doPostBack = (t, a) => postbacks.push(`${t}|${a}`);
   w.HTMLElement.prototype.click = function () { clicks.push(this.id || this.name || this.textContent); };
   w.setTimeout = (fn) => { fn(); return 0; };
+  w.module = { exports: {} };
 
-  /*
-   * `materia` y `consultado` reproducen lo que hace la plataforma de verdad:
-   * cambiar de curso DEJA LA MATERIA SIN ELEGIR Y VACÍA LA TABLA, y la tabla no
-   * vuelve hasta pulsar "Consultar". La primera versión del arnés dibujaba la
-   * tabla siempre, así que las pruebas pasaban y la corrida real volvió con
-   * "no hay tabla en pantalla" para los cuatro cursos.
-   */
-  const est = { curso: CURSOS[0], materia: '1035', consultado: true };
   const op = (v, t, s) => `<option value="${v}"${s ? ' selected' : ''}>${t}</option>`;
 
-  function filas() {
-    const pct = PCT[gradoDe(est.curso)];
-    return pct.map((p, i) => {
+  /** El HTML de la pantalla en un estado dado. */
+  function pagina({ curso, materia, consultado }) {
+    const pct = PCT[gradoDe(curso)] || PCT[8];
+    const filas = pct.map((p, i) => {
       const ctl = 'ctl' + String(i + 2).padStart(2, '0');
       const n = `ctl00$ContentPlaceHolder1$gvActividades$${ctl}`;
       const edit = filaEnEdicion && i === 0;
-      // En edición el texto se va al value del input y la celda queda vacía.
       const celdaPct = edit ? `<input name="${n}$ctl05" value="${p}">` : String(p);
-      // Una casilla sin usar va en 0 % y SIN columna: dice "ACT.3" a secas,
-      // mientras que una actividad de verdad dice "T3 - C4. TÍTULO".
+      // Una casilla sin usar va en 0 % y SIN columna.
       const texto = p === 0 ? `ACT.${i + 1}` : `T3 - C${4 + i}. TITULO ${i}`;
       const celdaDesc = edit
         ? `<textarea name="${n}$descripcion">${texto}</textarea>`
@@ -71,58 +72,64 @@ function crear({ columnaExtra = false, filaEnEdicion = false, sinTabla = false }
         <td>Comprensión</td><td>Act.${i + 1}</td><td>${celdaDesc}</td>
         <td>298${i}</td><td>1035</td><td>11378${i}</td>
         <td>${celdaPct}</td><td>Act.${i + 1}</td>
-        <td><select name="${n}$lstCiclo"${edit ? '' : ' disabled'}><option value="${i + 1}" selected>Ciclo ${i + 1}</option></select></td>
-        <td><select name="${n}$lstDestino"${edit ? '' : ' disabled'}><option value="2" selected>Clase</option></select></td>
+        <td><select name="${n}$lstCiclo"><option value="${i + 1}" selected>Ciclo ${i + 1}</option></select></td>
+        <td><select name="${n}$lstDestino"><option value="2" selected>Clase</option></select></td>
       </tr>`;
     }).join('');
-  }
-
-  function pintar() {
     const ths = (columnaExtra ? ['Nº', ...ENC] : ENC).map((h) => `<th>${h}</th>`).join('');
-    w.document.getElementById('aspnetForm').innerHTML = `
-      <input type="hidden" id="ctl00_ContentPlaceHolder1_hfProfesor" value="451">
+    const hayTabla = !sinTabla && materia !== '0' && consultado;
+    return `<!doctype html><html><body><form id="aspnetForm" name="aspnetForm" action="Matriz.aspx">
+      <input type="hidden" name="__VIEWSTATE" value="VS-${curso}-${materia}-${consultado}">
+      <input type="hidden" name="__EVENTTARGET" value="">
+      <input type="hidden" name="__EVENTARGUMENT" value="">
+      <input type="hidden" id="ctl00_ContentPlaceHolder1_hfProfesor" name="hfProfesor" value="451">
       <select id="ctl00_ContentPlaceHolder1_lstCurso" name="ctl00$ContentPlaceHolder1$lstCurso">
-        ${CURSOS.map((c) => op(c, c, c === est.curso)).join('')}${op('%', '< TODOS >', false)}</select>
+        ${CURSOS.map((c) => op(c, c, c === curso)).join('')}${op('%', '< TODOS >', false)}</select>
       <select id="ctl00_ContentPlaceHolder1_lstMateria" name="ctl00$ContentPlaceHolder1$lstMateria">
-        ${op('0', '<TODOS>', est.materia === '0')}${op('1035', 'Information Technology', est.materia === '1035')}</select>
-      <select id="ctl00_ContentPlaceHolder1_lstPeriodo"><option value="03" selected>TERCERO</option></select>
-      <input type="image" id="ctl00_ContentPlaceHolder1_btnDescargaExcel" alt="Descargar a Excel">
+        ${op('0', '<TODOS>', materia === '0')}${op('1035', 'Information Technology', materia === '1035')}</select>
+      <select id="ctl00_ContentPlaceHolder1_lstPeriodo" name="ctl00$ContentPlaceHolder1$lstPeriodo">
+        <option value="03" selected>TERCERO</option></select>
+      <input type="image" id="ctl00_ContentPlaceHolder1_btnDescargaExcel" name="ctl00$ContentPlaceHolder1$btnDescargaExcel">
       <input type="submit" id="ctl00_ContentPlaceHolder1_btnRefresca" name="ctl00$ContentPlaceHolder1$btnRefresca" value="Consultar">
-      ${(sinTabla || est.materia === '0' || !est.consultado) ? '' : `<table id="ctl00_ContentPlaceHolder1_gvActividades">
-        <thead><tr>${ths}</tr></thead><tbody>${filas()}
-        <tr><td colspan="11">Total</td></tr></tbody></table>`}`;
+      ${hayTabla ? `<table id="ctl00_ContentPlaceHolder1_gvActividades">
+        <thead><tr>${ths}</tr></thead><tbody>${filas}
+        <tr><td colspan="11">Total</td></tr></tbody></table>` : ''}
+    </form></body></html>`;
   }
-  pintar();
-  const evaluar = () => { w.document.getElementById('gla-act')?.remove(); w.eval(FUENTE); };
-  evaluar();
 
+  /*
+   * El servidor, con la máquina de estados medida contra la plataforma:
+   * cambiar de curso deja la materia sin elegir y sin tabla; elegir materia
+   * tampoco la trae; solo "Consultar" la devuelve.
+   */
+  w.fetch = (url, opciones) => {
+    const campos = new URLSearchParams(opciones.body);
+    enviados.push({ url, campos });
+    const objetivo = campos.get('__EVENTTARGET') || '';
+    let curso = campos.get('ctl00$ContentPlaceHolder1$lstCurso') || CURSOS[0];
+    let materia = campos.get('ctl00$ContentPlaceHolder1$lstMateria') || '0';
+    let consultado = false;
+    if (/lstCurso$/.test(objetivo)) materia = '0';
+    else if (/lstMateria$/.test(objetivo)) consultado = false;
+    else if (campos.has('ctl00$ContentPlaceHolder1$btnRefresca')) consultado = true;
+    return Promise.resolve({
+      ok: true, status: 200,
+      text: () => Promise.resolve(pagina({ curso, materia, consultado })),
+    });
+  };
+
+  // La pantalla que el docente tiene abierta: de acá sale el plan.
+  w.document.body.innerHTML = pagina({ curso: CURSOS[0], materia: '1035', consultado: true })
+    .replace(/^[\s\S]*<body>/, '').replace(/<\/body>[\s\S]*$/, '');
+  w.eval(FUENTE);
+
+  const $ = (s) => w.document.querySelector(s);
   return {
-    w, postbacks, clicks,
-    q: (s) => w.document.querySelector(s),
-    salida: () => JSON.parse(w.document.querySelector('#ga-salida').value || '{}'),
+    w, postbacks, clicks, enviados, q: $,
+    salida: () => JSON.parse($('#ga-salida').value || '{}'),
     log: () => [...w.document.querySelectorAll('#ga-log div')].map((d) => d.textContent).join('\n'),
-    async correr(max = 100) {
-      let atendidos = 0;
-      for (let v = 0; v < max; v++) {
-        await new Promise((r) => setImmediate(r));
-        await new Promise((r) => setTimeout(r, 0));
-        if (postbacks.length === atendidos) break;
-        atendidos = postbacks.length;
-        const ultimo = postbacks[postbacks.length - 1];
-        const nuevoCurso = w.document.getElementById('ctl00_ContentPlaceHolder1_lstCurso').value;
-        if (/lstCurso/.test(ultimo)) {
-          // Lo que hace la plataforma: resetea la materia y vacía la tabla.
-          est.curso = nuevoCurso;
-          est.materia = '0';
-          est.consultado = false;
-        } else if (/lstMateria/.test(ultimo)) {
-          est.materia = w.document.getElementById('ctl00_ContentPlaceHolder1_lstMateria').value;
-          est.consultado = false;          // elegir no alcanza
-        } else if (/btnRefresca/.test(ultimo)) {
-          est.consultado = true;
-        }
-        pintar(); evaluar();
-      }
+    async correr(max = 200) {
+      for (let i = 0; i < max; i++) await new Promise((r) => setImmediate(r));
     },
   };
 }
@@ -155,9 +162,11 @@ console.log('\n[uno por grado, que es lo que hace falta]');
   await p.q('#ga-ir').onclick();
   await p.correr();
   eq(p.salida().cursos.map((c) => c.grado), [8, 9, 11], 'y cubre los tres grados');
-  // 1º curso: ya está elegido y consultado → 0. Los otros dos: curso +
-  // materia + consultar = 3 cada uno.
-  eq(p.postbacks.length, 6, 'con 6 postbacks: tres por cada curso que hay que cambiar');
+  // Tres envíos por curso: curso, materia y consultar. Ya no se ahorra el
+  // primero, porque el recorrido no parte de lo que hay en pantalla sino de
+  // su propio estado — y eso es lo que lo vuelve repetible.
+  eq(p.enviados.length, 9, 'nueve envíos: tres por cada uno de los tres cursos');
+  eq(p.postbacks.length, 0, 'y CERO postbacks: ya no navega, la página no se recarga');
 }
 {
   const p = crear();
@@ -228,9 +237,20 @@ console.log('\n[la materia y el Consultar, que es lo que faltaba]');
   eq(s.cursos.length, 3, 'los tres grados traen tabla');
   eq(s.errores, [], 'sin un solo "no hay tabla en pantalla"');
   // El orden importa: elegir la materia antes de consultar.
-  const delSegundo = p.postbacks.slice(0, 3);
-  ok(/lstCurso/.test(delSegundo[0]) && /lstMateria/.test(delSegundo[1]) && /btnRefresca/.test(delSegundo[2]),
-     'y en ese orden: curso, materia, Consultar');
+  const tres = p.enviados.slice(0, 3);
+  ok(/lstCurso$/.test(tres[0].campos.get('__EVENTTARGET')), 'el primer envío elige curso');
+  ok(/lstMateria$/.test(tres[1].campos.get('__EVENTTARGET')), 'el segundo, materia');
+  ok(tres[2].campos.has('ctl00$ContentPlaceHolder1$btnRefresca'),
+     'y el tercero manda Consultar como campo, porque es un submit');
+
+  // Encadenar: cada envío parte del VIEWSTATE que devolvió el anterior.
+  const vs = p.enviados.map((e) => e.campos.get('__VIEWSTATE'));
+  ok(new Set(vs.slice(0, 3)).size === 3,
+     'cada envío lleva un VIEWSTATE distinto: usa el que devolvió el anterior');
+
+  // Y el valor del curso viaja SIN recortar.
+  ok(/ $/.test(tres[0].campos.get('ctl00$ContentPlaceHolder1$lstCurso')),
+     'el curso va con sus espacios: recortarlo manda un curso que el servidor no reconoce');
 }
 
 console.log('\n[la lista blanca de controles]');
@@ -246,8 +266,32 @@ console.log('\n[la lista blanca de controles]');
   const sc = FUENTE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   ok(/PERMITIDOS/.test(sc) && /no permitido/.test(sc),
      'la lista blanca está en el código, no solo en la prueba');
-  ok(/__doPostBack/.test(sc) && (sc.match(/__doPostBack/g) || []).length === 1,
-     'y hay UN solo lugar donde se llama a __doPostBack: el que la verifica');
+  // Antes se comprobaba que hubiera UNA sola llamada a __doPostBack. Ahora no
+  // hay ninguna: el recorrido no navega. Lo que se verifica es lo equivalente
+  // —un solo lugar que toca la red— y está más arriba.
+  ok(!/__doPostBack/.test(sc), 'no queda ninguna llamada a __doPostBack');
+  ok(/PERMITIDOS\.has/.test(sc), 'y la lista blanca se comprueba antes de enviar');
+}
+
+console.log('\n[la lista blanca, ejercida]');
+{
+  // Que esté en el código no basta: tiene que estar EN el camino del envío.
+  const p = crear();
+  const mod = p.w.module.exports;
+  ok(!!mod, 'el script exporta sus partes para poder probarlas');
+  const antes = p.enviados.length;
+  let msg = '';
+  await mod.enviar(new p.w.URLSearchParams(), 'ctl00$ContentPlaceHolder1$gvActividades')
+    .catch((e) => { msg = e.message; });
+  ok(/no permitido/.test(msg), 'disparar la tabla —que es lo que edita— revienta');
+  eq(p.enviados.length, antes, 'y no sale ninguna petición');
+
+  msg = '';
+  await mod.enviar(new p.w.URLSearchParams(), null,
+                   { 'ctl00$ContentPlaceHolder1$btnDescargaExcel': 'x' })
+    .catch((e) => { msg = e.message; });
+  ok(/no permitido/.test(msg), 'y meterlo como campo extra tampoco pasa');
+  eq(p.enviados.length, antes, 'sigue sin salir ninguna petición');
 }
 
 console.log('\n[reglas del encargo, sobre el fuente]');
@@ -256,9 +300,14 @@ console.log('\n[reglas del encargo, sobre el fuente]');
   ok(!/\.click\(/.test(sc), 'no pulsa nada por código');
   ok(!/\.submit\(/.test(sc), 'no envía el formulario');
   ok(!/Edit\$|Actualizar'/.test(sc), 'no nombra los disparadores de edición ni para construirlos');
-  ok(/ESPERA_MS\s*=\s*\d{4,}/.test(sc), 'espera al menos 1000 ms entre postbacks');
-  ok(/MAX_CARGAS/.test(sc) && /MAX_INTENTOS/.test(sc), 'tiene cortafuegos y tope de reintentos');
-  ok(/=== '%'/.test(sc), 'y la guarda contra "< TODOS >" está en el código');
+  ok(/ESPERA_MS\s*=\s*\d{4,}/.test(sc), 'espera al menos 1000 ms entre cursos');
+  ok(!/sessionStorage/.test(sc),
+     'no deja estado en el navegador: sin recargas no hay nada que persistir');
+  const fetches = (sc.match(/\bfetch\s*\(/g) || []).length;
+  ok(fetches === 1, 'hay UNA sola llamada a fetch, con la lista blanca adentro');
+  ok(!/__doPostBack/.test(sc), 'y ya no llama a __doPostBack: no navega');
+  ok(/!== '%'/.test(sc) && /!== '0'/.test(sc),
+     'la guarda contra "< TODOS >" está en el código, para el curso y para la materia');
 }
 
 console.log(fallos === 0 ? '\n✓ todo verde' : `\n${fallos} FALLARON`);

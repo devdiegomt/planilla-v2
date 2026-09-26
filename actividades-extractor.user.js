@@ -53,16 +53,20 @@
 (() => {
   'use strict';
 
-  const CLAVE_ESTADO = 'gla_actividades_estado_v1';
+
   const ESPERA_MS = 1500;
-  const MAX_INTENTOS = 5;   // curso + materia + consultar, con margen
-  const MAX_CARGAS = 60;
 
   const P = 'ctl00_ContentPlaceHolder1_';
   const N = 'ctl00$ContentPlaceHolder1$';
   const ID = { curso: P + 'lstCurso', materia: P + 'lstMateria', periodo: P + 'lstPeriodo',
                tabla: P + 'gvActividades', profesor: P + 'hfProfesor' };
   const NOMBRE = { curso: N + 'lstCurso', materia: N + 'lstMateria', consultar: N + 'btnRefresca' };
+
+  /** A dónde se envía. La acción del formulario, o la misma pantalla. */
+  const ACCION = (() => {
+    const f = document.forms['aspnetForm'] || document.querySelector('form');
+    return (f && f.getAttribute('action')) || location.pathname + location.search;
+  })();
 
   /*
    * Lo ÚNICO que este script puede disparar.
@@ -74,12 +78,6 @@
    */
   const PERMITIDOS = new Set([NOMBRE.curso, NOMBRE.materia, NOMBRE.consultar]);
 
-  function postear(nombreCtrl) {
-    if (!PERMITIDOS.has(nombreCtrl)) {
-      throw new Error('control no permitido para este script: ' + nombreCtrl);
-    }
-    window.__doPostBack(nombreCtrl, '');
-  }
 
   const ES_USERSCRIPT = (typeof GM_info !== 'undefined');
 
@@ -87,7 +85,14 @@
   const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
   const lim = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
   const norm = (s) => lim(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const el = (id) => document.getElementById(id);
+  /*
+   * Ahora recibe el documento.
+   *
+   * El recorrido ya no navega: pide las páginas con `fetch` y las lee con
+   * DOMParser, así que lo que se inspecciona casi nunca es la pantalla abierta.
+   * Por omisión sigue siendo ella, que es de donde sale el plan.
+   */
+  const el = (id, doc) => (doc || document).getElementById(id);
 
   /** "60" → 60. Null si no se puede leer: un 0 de verdad es un dato. */
   function aNumero(t) {
@@ -105,23 +110,25 @@
 
   // --- Estado ---------------------------------------------------------------
 
-  const Estado = {
-    leer() { try { return JSON.parse(sessionStorage.getItem(CLAVE_ESTADO) || 'null'); } catch { return null; } },
-    guardar(e) { try { sessionStorage.setItem(CLAVE_ESTADO, JSON.stringify(e)); } catch { /* nada */ } },
-    limpiar() { try { sessionStorage.removeItem(CLAVE_ESTADO); } catch { /* nada */ } },
-  };
-  let estado = Estado.leer();
-  const persistir = () => Estado.guardar(estado);
+  /*
+   * Vive en memoria y ya está.
+   *
+   * Antes iba a `sessionStorage` porque cada postback recargaba la página y
+   * había que retomar donde se iba. El recorrido ahora es un bucle con
+   * `fetch`, así que no hay recarga a la que sobrevivir — y guardarlo sería
+   * dejar basura en el navegador del docente por nada.
+   */
+  let estado = null;
 
   function anotar(msg, clase) {
     const linea = { t: new Date().toLocaleTimeString('es-CO'), msg: String(msg), clase: clase || null };
-    if (estado) { estado.registro.push(linea); persistir(); }
+    if (estado) estado.registro.push(linea);
     pintarLinea(linea);
     console.log('[actividades]', msg);
   }
   function abortar(motivo) {
     anotar('ABORTADO: ' + motivo, 'err');
-    if (estado) { estado.activa = false; persistir(); }
+    if (estado) estado.activa = false;
     refrescarPanel();
   }
 
@@ -167,8 +174,8 @@
     return lim(celda.textContent);
   }
 
-  function leerTabla() {
-    const tabla = el(ID.tabla);
+  function leerTabla(doc) {
+    const tabla = el(ID.tabla, doc);
     if (!tabla) return { error: 'no hay tabla en pantalla' };
     const mapa = mapaColumnas(tabla);
     if (!mapa) return { error: 'la tabla no tiene las columnas Descripción y Porcentaje' };
@@ -232,58 +239,128 @@
     return { actividades, vacias };
   }
 
-  // --- Postbacks ------------------------------------------------------------
+  // --- Leer el filtro -------------------------------------------------------
 
-  let enVuelo = false;
-  async function dispararPostback(desc, fn) {
-    if (enVuelo) return;
-    enVuelo = true;
-    anotar('→ ' + desc);
-    persistir();
-    await dormir(ESPERA_MS);
-    if (!estado || !estado.activa) { enVuelo = false; return; }
-    try { fn(); } catch (e) { enVuelo = false; abortar('fallo al disparar el postback: ' + e.message); }
-  }
-
-  function ponerCurso(valor) {
-    const sel = el(ID.curso);
-    if (!sel) throw new Error('no encuentro el selector de curso');
-    if (lim(valor) === '%') throw new Error('nunca se selecciona "< TODOS >"');
-    if ($$ && $$.fn) $$(sel).val(valor).trigger('change.select2'); else sel.value = valor;
-    postear(NOMBRE.curso);
-  }
-
-  /**
-   * Elige una materia concreta.
-   *
-   * Hace falta porque **cambiar de curso deja la materia sin elegir y la tabla
-   * vacía**. La primera versión no lo hacía y la corrida entera volvió con
-   * "no hay tabla en pantalla" para los cuatro cursos: el `< TODOS >` de la
-   * materia no dibuja nada.
+  /*
+   * Estos dos se quedaron sin casa cuando el recorrido dejó de navegar: vivían
+   * junto a los `ponerCurso`/`ponerMateria`, que ya no existen. Siguen siendo
+   * lectores, así que van con los lectores — y ahora reciben el documento,
+   * porque lo que se lee casi siempre es una respuesta, no la pantalla.
    */
-  function ponerMateria(valor) {
-    const sel = el(ID.materia);
-    if (!sel) throw new Error('no encuentro el selector de materia');
-    if ($$ && $$.fn) $$(sel).val(valor).trigger('change.select2'); else sel.value = valor;
-    postear(NOMBRE.materia);
-  }
+
+  const valorDe = (id, doc) => { const c = el(id, doc); return c ? lim(c.value) : null; };
 
   /** Las materias que son una materia, no el "< TODOS >". */
-  const materiasConcretas = () => {
-    const sel = el(ID.materia);
+  const materiasConcretas = (doc) => {
+    const sel = el(ID.materia, doc);
     return [...(sel ? sel.options : [])].filter((o) => {
       const v = lim(o.value);
       return v && v !== '%' && v !== '0';
     });
   };
 
-  const valorDe = (id) => { const s = el(id); return s ? lim(s.value) : null; };
+  // --- Recorrer sin recargar -------------------------------------------------
+
+  /*
+   * El recorrido va por `fetch`, no navegando.
+   *
+   * Medido el 26/09/2026 contra la plataforma: los tres pasos del filtro
+   * —cambiar curso, elegir materia, consultar— contestan 200 con un
+   * `__VIEWSTATE` nuevo, y el tercero devuelve la tabla de 34 filas. Y
+   * reproducen la misma máquina de estados que en el navegador: tras el curso
+   * no hay tabla, tras la materia tampoco, y vuelve al consultar. Ver
+   * `recon/sonda-postback.js` y `CATALOGO.md`.
+   *
+   * Lo que eso se lleva por delante: **la máquina de estados**. Antes cada paso
+   * recargaba la página, así que había que guardar en sessionStorage por dónde
+   * iba, contar intentos, contar cargas y volver a entrar en `continuar()` en
+   * cada arranque. Sin recargas no hay nada que persistir — es un bucle.
+   *
+   * Y de paso deja de hacer falta Tampermonkey: un favorito no sobrevive a una
+   * recarga, pero acá no hay ninguna.
+   *
+   * **Nunca toca la pantalla.** Lo que vuelve se lee con DOMParser y se tira;
+   * el formulario que el docente tiene abierto queda como estaba.
+   */
+
+  /** Los campos de un formulario, como los mandaría el navegador. */
+  function camposDe(form) {
+    const datos = new URLSearchParams();
+    for (const c of form.querySelectorAll('input[name], select[name], textarea[name]')) {
+      if (c.disabled) continue;
+      if (c.type === 'checkbox' || c.type === 'radio') {
+        if (c.checked) datos.append(c.name, c.value);
+        continue;
+      }
+      // Los submit no viajan solos: solo el que se pulsó, y eso se pone aparte.
+      if (c.type === 'submit' || c.type === 'image' || c.type === 'button') continue;
+      datos.append(c.name, c.value);
+    }
+    return datos;
+  }
+
+  const formularioDe = (doc) => doc.forms['aspnetForm'] || doc.querySelector('form');
+
+  /**
+   * Un envío. Es el ÚNICO lugar del script que toca la red.
+   *
+   * `objetivo` es el control que dispara (un `__EVENTTARGET`) y `extra` lo que
+   * haya que poner además — el valor elegido, o el botón de consultar, que al
+   * ser un submit viaja como campo propio y no como evento.
+   */
+  async function enviar(campos, objetivo, extra) {
+    if (objetivo && !PERMITIDOS.has(objetivo)) {
+      throw new Error('control no permitido para este script: ' + objetivo);
+    }
+    for (const [k, v] of Object.entries(extra || {})) {
+      if (!PERMITIDOS.has(k)) {
+        throw new Error('control no permitido para este script: ' + k);
+      }
+      campos.set(k, v);
+    }
+    campos.set('__EVENTTARGET', objetivo || '');
+    campos.set('__EVENTARGUMENT', '');
+
+    const r = await fetch(ACCION, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: campos.toString(),
+    });
+    if (!r.ok) throw new Error('el servidor contestó ' + r.status);
+    const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+    if (doc.querySelector('input[type=password]')) {
+      throw new Error('volvió el login: se cayó la sesión');
+    }
+    const form = formularioDe(doc);
+    if (!form) throw new Error('la respuesta no trae el formulario');
+    return { doc, campos: camposDe(form) };
+  }
+
+  /** El botón de consultar tal como está en esa respuesta. */
+  function botonConsultar(doc) {
+    const b = [...doc.querySelectorAll('input[type=submit][name]')]
+      .find((x) => x.name === NOMBRE.consultar);
+    return b ? { [b.name]: b.value || 'Consultar' } : null;
+  }
 
   // --- Plan -----------------------------------------------------------------
 
+  /*
+   * Los cursos, con su valor TAL CUAL y no recortado.
+   *
+   * En la plataforma los valores traen espacios al final (`'1101 '`). Mientras
+   * el recorrido navegaba daba igual, porque se asignaba `sel.value = valor` y
+   * el navegador emparejaba la opción. Ahora el valor viaja en el cuerpo del
+   * POST, así que mandar `'1101'` por `'1101 '` es mandar un curso que el
+   * servidor no reconoce. Se guarda el bruto para enviar y el recortado para
+   * mostrar y para sacar el grado.
+   */
   function cursosDisponibles() {
     const sel = el(ID.curso);
-    return [...(sel ? sel.options : [])].map((o) => lim(o.value)).filter((v) => v && v !== '%');
+    return [...(sel ? sel.options : [])]
+      .map((o) => ({ valor: o.value, texto: lim(o.value) }))
+      .filter((c) => c.texto && c.texto !== '%');
   }
 
   /**
@@ -299,7 +376,7 @@
     if (todos) return cursos;
     const porGrado = new Map();
     for (const c of cursos) {
-      const g = gradoDe(c);
+      const g = gradoDe(c.texto);
       if (!porGrado.has(g)) porGrado.set(g, c);
     }
     return [...porGrado.values()];
@@ -307,81 +384,76 @@
 
   // --- Recorrido ------------------------------------------------------------
 
-  const actual = () => estado.plan[estado.i] || null;
 
-  async function continuar() {
-    if (!estado || !estado.activa) return;
-    if (estado.i >= estado.plan.length) return terminar();
+  /**
+   * El recorrido entero: por cada curso, tres envíos y una lectura.
+   *
+   * Uno por vez y con espera entre cursos, que es la regla del repo. Un curso
+   * que falle no tumba la corrida: se anota y se sigue con el siguiente.
+   */
+  async function recorrer(plan) {
+    estado.activa = true;
+    refrescarPanel();
 
-    const curso = actual();
-    const intentos = estado.intentos[curso] || 0;
-    if (intentos > MAX_INTENTOS) {
-      estado.errores.push({ curso, motivo: `no cargó tras ${MAX_INTENTOS} intentos` });
-      anotar(`✗ ${curso}: no cargó. Sigo.`, 'err');
-      estado.i++; estado.intentos[curso] = 0; persistir();
-      return continuar();
-    }
+    // Se arranca del formulario de la pantalla, que es el estado de partida.
+    let campos = camposDe(formularioDe(document));
 
-    if (lim(valorDe(ID.curso)) !== lim(curso)) {
-      const opcion = [...el(ID.curso).options].find((o) => lim(o.value) === lim(curso));
-      if (!opcion) {
-        estado.errores.push({ curso, motivo: 'el curso ya no está en la lista' });
-        estado.i++; persistir();
-        return continuar();
+    for (const c of plan) {
+      if (!estado.activa) break;
+      const curso = c.texto;
+      estado.i = plan.indexOf(c);
+      refrescarPanel();
+
+      try {
+        anotar(`→ ${curso}: curso`);
+        // El valor va sin recortar: en la plataforma trae espacios al final.
+        let paso = await enviar(campos, NOMBRE.curso, { [NOMBRE.curso]: c.valor });
+
+        const materias = materiasConcretas(paso.doc);
+        if (!materias.length) throw new Error('el curso no tiene materias');
+        anotar(`→ ${curso}: ${lim(materias[0].text)}`);
+        paso = await enviar(paso.campos, NOMBRE.materia,
+                            { [NOMBRE.materia]: materias[0].value });
+
+        const boton = botonConsultar(paso.doc);
+        if (!boton) throw new Error('no está el botón de consultar');
+        anotar(`→ ${curso}: consultar`);
+        paso = await enviar(paso.campos, null, boton);
+
+        const lectura = leerTabla(paso.doc);
+        if (lectura.error) throw new Error(lectura.error);
+
+        estado.resultados.push({
+          curso,
+          grado: gradoDe(curso),
+          materia: lim(valorDe(ID.materia, paso.doc)),
+          materiaNombre: lim(el(ID.materia, paso.doc)?.selectedOptions[0]?.text || ''),
+          periodo: lim(valorDe(ID.periodo, paso.doc)),
+          actividades: lectura.actividades,
+          casillasSinUsar: lectura.vacias,
+        });
+        const suma = lectura.actividades.reduce((a, x) => a + (x.porcentaje || 0), 0);
+        anotar(`✔ ${curso}: ${lectura.actividades.length} actividades `
+          + `(${lectura.vacias.length} casillas sin usar), suman ${suma}%.`);
+
+        // El siguiente curso arranca del estado que dejó este.
+        campos = paso.campos;
+      } catch (e) {
+        estado.errores.push({ curso, motivo: e.message });
+        anotar(`✗ ${curso}: ${e.message}. Sigo.`, 'err');
+        // Se vuelve al formulario de la pantalla: el estado del que falló no
+        // sirve de punto de partida.
+        campos = camposDe(formularioDe(document));
       }
-      estado.intentos[curso] = intentos + 1; persistir();
-      return dispararPostback(`curso → ${curso}`, () => ponerCurso(opcion.value));
+      refrescarPanel();
+      await dormir(ESPERA_MS);
     }
 
-    // --- La materia, que el cambio de curso deja sin elegir ---
-    const materias = materiasConcretas();
-    const materiaActual = lim(valorDe(ID.materia));
-    const sinMateria = !materiaActual || materiaActual === '%' || materiaActual === '0';
-    if (sinMateria && materias.length) {
-      estado.intentos[curso] = intentos + 1; persistir();
-      return dispararPostback(`materia → ${lim(materias[0].text)}`,
-        () => ponerMateria(materias[0].value));
-    }
-
-    /*
-     * --- Consultar ---
-     * No alcanza con elegir: la tabla no aparece hasta pulsar "Consultar".
-     * Es una consulta, no una escritura: refresca lo que se muestra y no toca
-     * nada. Se dispara por su nombre, que está en la lista blanca.
-     */
-    if (!el(ID.tabla)) {
-      estado.intentos[curso] = intentos + 1; persistir();
-      return dispararPostback('consultar', () => postear(NOMBRE.consultar));
-    }
-
-    const lectura = leerTabla();
-    if (lectura.error) {
-      estado.errores.push({ curso, motivo: lectura.error });
-      anotar(`· ${curso}: ${lectura.error}. Sigo.`, 'avi');
-      estado.i++; estado.intentos[curso] = 0; persistir();
-      return continuar();
-    }
-
-    estado.resultados.push({
-      curso,
-      grado: gradoDe(curso),
-      materia: lim(valorDe(ID.materia)),
-      materiaNombre: lim(el(ID.materia)?.selectedOptions[0]?.text || ''),
-      periodo: lim(valorDe(ID.periodo)),
-      actividades: lectura.actividades,
-      casillasSinUsar: lectura.vacias,
-    });
-    const suma = lectura.actividades.reduce((a, x) => a + (x.porcentaje || 0), 0);
-    anotar(`✔ ${curso}: ${lectura.actividades.length} actividades (${lectura.vacias.length} casillas sin usar), suman ${suma}%.`);
-    estado.i++; estado.intentos[curso] = 0; persistir(); refrescarPanel();
-    return continuar();
-  }
-
-  function terminar() {
     estado.activa = false;
     anotar(`Listo: ${estado.resultados.length} curso(s).`, 'ok');
-    persistir(); refrescarPanel();
+    refrescarPanel();
   }
+
 
   const construirJSON = () => ({
     generadoEn: new Date().toISOString(),
@@ -471,17 +543,15 @@
   $('#ga-ir').onclick = () => {
     const plan = armarPlan($('#ga-todos').checked);
     if (!plan.length) { anotar('No encuentro cursos.', 'err'); return; }
-    estado = { activa: true, plan, i: 0, intentos: {}, cargas: 0,
-               registro: [], resultados: [], errores: [] };
-    persistir();
+    estado = { activa: true, plan, i: 0, registro: [], resultados: [], errores: [] };
     $log.innerHTML = '';
     anotar(`Arranco: ${plan.length} curso(s).`);
-    refrescarPanel();
-    continuar();
+    recorrer(plan);
   };
 
   $('#ga-cancelar').onclick = () => {
-    Estado.limpiar(); estado = null; $log.innerHTML = '';
+    if (estado) estado.activa = false;   // el bucle corta en el próximo curso
+    estado = null; $log.innerHTML = '';
     pintarLinea({ t: new Date().toLocaleTimeString('es-CO'), msg: 'Cancelado. Nada quedó a medias: no se escribió nada.', clase: 'err' });
     refrescarPanel();
   };
@@ -502,17 +572,13 @@
   if (!ES_USERSCRIPT) {
     $('#ga-alerta').innerHTML =
       '<div class="alerta"><b>No detecto Tampermonkey</b><br>' +
-      'Cambiar de curso recarga la página, y lo que se pega en la consola no sobrevive a una recarga.</div>';
+      'El recorrido va sin recargar la página, así que sirve igual pegado en la consola.</div>';
   }
-  if (estado && estado.registro) estado.registro.forEach(pintarLinea);
   refrescarCosto();
-
-  if (estado && estado.activa) {
-    estado.cargas = (estado.cargas || 0) + 1;
-    persistir();
-    if (estado.cargas > MAX_CARGAS) abortar(`la página se recargó ${estado.cargas} veces. Corto por seguridad.`);
-    else { anotar(`Retomo tras la recarga (#${estado.cargas}).`); refrescarPanel(); continuar(); }
-  } else {
-    refrescarPanel();
+  refrescarPanel();
+  // Para las pruebas: sin esto la lista blanca solo se puede comprobar leyendo
+  // el código, y una guarda que nadie ejerce es una guarda que puede estar rota.
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { enviar, camposDe, leerTabla, PERMITIDOS };
   }
 })();
