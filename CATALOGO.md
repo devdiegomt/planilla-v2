@@ -227,3 +227,32 @@ de ese Editar, así que hace falta otra corrida ahí adentro.
 - `lstFilProfesor` trae **203 docentes con nombre completo**, y viene deshabilitado
   para un docente. La sonda ahora enmascara los textos de las listas largas: son
   personas reales que no eligieron estar en un JSON que se pega en un chat.
+
+
+## Un postback SÍ se puede hacer sin recargar — medido el 26/09/2026
+
+Corrido con `recon/sonda-postback.js` sobre `DefActividadDocentePorcMatriz.aspx`
+(831), con la pantalla ya consultada:
+
+| Qué se midió | Resultado |
+| --- | --- |
+| ¿Acepta el POST desde `fetch`? | **sí**, 200 en 177 ms, sin redirect |
+| ¿Viaja la sesión? | **sí** — no volvió el login |
+| ¿Trae `__VIEWSTATE` nuevo? | **sí**, y distinto del de la pantalla |
+| ¿Volvió la tabla? | **sí**, 34 filas · 151 KB |
+
+Eso desarma la limitación que hacía obligatorio Tampermonkey. El razonamiento
+era: cada postback recarga la página, un userscript se reinyecta y un favorito
+no. Pero **vale mientras el postback navegue**: WebForms manda el formulario
+entero por POST y devuelve la página entera, así que haciendo ese mismo envío
+con `fetch` la página nunca se recarga y el script no muere. Es lo que hace un
+UpdatePanel por dentro.
+
+Lo que el envío sin `__EVENTTARGET` ya demuestra de paso: **el estado de los
+filtros sobrevive**, porque los `<select>` viajan como campos. La tabla volvió
+sin volver a elegir nada.
+
+**Lo que esto NO dice todavía:** que reemplazar el DOM con la respuesta deje la
+página funcionando (los scripts de la plataforma, el `__doPostBack` que hay que
+volver a atar). Eso es del lado del cliente y se prueba aparte. El servidor, que
+era la parte que podía matar la idea de un plumazo, colabora.
