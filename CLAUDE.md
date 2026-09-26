@@ -18,6 +18,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `verificar-planilla.mjs` | Compara un Califica descargado contra el generado por la app. Código 0 = se puede subir, 1 = bloqueante. | No (local) |
 | `recon/sonda-csp.js` | Mide si la CSP de la plataforma deja correr un bookmarklet, para saber si Tampermonkey se puede reemplazar. | No |
 | `recon/sonda-conscalifica.js` | Lee el DOM de `ConsCalificaDocentesGen` (24), la única pantalla con los cuatro periodos, para saber qué entrega antes de escribir el extractor. | No |
+| `recon/sonda-postback.js` | Mide si un postback se puede hacer con `fetch` **sin recargar la página**. Es lo que decide si Tampermonkey sigue siendo obligatorio para los scripts que recorren. | No |
 | `recon/sonda-pantalla.js` | **Sonda genérica**: lee el DOM de cualquier pantalla y dice qué filtros tiene, si hay tabla de datos, si aparece el COD_ALUM y **si la pantalla escribe**. La que hay que usar para una pantalla nueva. | No |
 | `recon/hacer-bookmarklet.mjs` | Convierte un script en un favorito arrastrable. Genera el de la sonda y el del autofill. | No |
 | `recon/` | Sondas de reconocimiento y pruebas. | — |
@@ -90,11 +91,22 @@ extensiones. Un **bookmarklet** (favorito con código) se instala arrastrándolo
   violación): es CORS o la red del colegio. Por eso el favorito lleva el script
   embebido, que además no depende de que la app esté accesible.
 
-**La limitación, que es de diseño y no se arregla:** el "flujo completo" recorre
-el filtro y cada paso hace un postback que recarga la página. Un userscript se
-reinyecta en cada carga; un favorito no. Por eso, como bookmarklet se elige hora,
-curso y asignatura a mano y se usa **"Solo marcar"**, que no navega hasta el
-guardado y verifica que la pantalla coincida con el JSON antes de marcar.
+**La limitación:** el "flujo completo" recorre el filtro y cada paso hace un
+postback que recarga la página. Un userscript se reinyecta en cada carga; un
+favorito no. Por eso, como bookmarklet se elige hora, curso y asignatura a mano
+y se usa **"Solo marcar"**, que no navega hasta el guardado y verifica que la
+pantalla coincida con el JSON antes de marcar. Lo mismo deja fuera al extractor
+de actividades, al de historial y al autofill de la matriz, que recorren.
+
+**Pero la limitación vale mientras el postback NAVEGUE**, y eso está sin medir.
+WebForms manda el formulario entero por POST y devuelve la página entera; si ese
+mismo envío se hace con `fetch` y el DOM se actualiza con lo que vuelve, la
+página nunca se recarga y el favorito no muere — es lo que hace un UpdatePanel.
+`recon/sonda-postback.js` mide si el servidor colabora: si acepta el POST desde
+`fetch`, si contesta la página en vez del login, y si trae un **`__VIEWSTATE`
+nuevo** (sin eso el segundo postback ya falla). La sonda **no implementa** el
+mecanismo: manda un envío de "vuelve a dibujar la misma página" —sin ningún
+control, ni siquiera Consultar—, lo mide y lo tira, sin tocar el DOM.
 
 El autofill es `@grant none` —no usa APIs de Tampermonkey— así que el mismo
 archivo sirve de userscript y de favorito. `GM_info` solo se usa para detectar

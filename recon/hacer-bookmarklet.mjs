@@ -45,6 +45,24 @@ const BOOKMARKLETS = [
     ],
   },
   {
+    id: 'sonda-postback',
+    fuente: join(aquí, 'sonda-postback.js'),
+    salida: join(aquí, 'sonda-postback-bookmarklet.html'),
+    titulo: '¿Se puede hacer un postback sin recargar?',
+    boton: 'Sonda postback',
+    pasos: [
+      'Abre en Classroom Live <strong>cualquier pantalla con datos</strong> — la matriz de actividades, la asistencia, la que sea — y déjala cargada.',
+      'Pulsa el favorito <strong>Sonda postback</strong>: aparece un panel.',
+      'Pulsa <strong>Medir</strong> y espera un segundo.',
+      'Pulsa <strong>Copiar resultado</strong> y pega el JSON en el chat.',
+    ],
+    notas: [
+      '<strong>Qué está midiendo.</strong> Hoy un favorito solo sirve para lo de un golpe, porque cada postback recarga la página y el favorito no se vuelve a inyectar. Pero eso vale mientras el postback <em>navegue</em>: si el mismo envío se hace con <code>fetch</code> y la página no se recarga, el script no muere. Esta sonda mide si el servidor colabora con eso.',
+      'Si el veredicto dice <strong>SE PUEDE</strong>, Tampermonkey deja de hacer falta para el extractor de actividades, el de historial y el autofill de la matriz. Si dice que no, queda confirmado que la extensión es obligatoria para esos tres, y dejamos de darle vueltas.',
+      '<strong>Solo mide.</strong> Manda UN envío de "vuelve a dibujar la misma página" —sin ningún control, ni siquiera Consultar—, lee lo que vuelve y lo tira. No toca la pantalla, no guarda nada y tiene una lista negra que le impide disparar Guardar, Importar, Actualizar, Editar o Eliminar.',
+    ],
+  },
+  {
     id: 'asistencia-autofill',
     fuente: join(raíz, 'asistencia-autofill.user.js'),
     salida: join(aquí, 'asistencia-autofill-bookmarklet.html'),
