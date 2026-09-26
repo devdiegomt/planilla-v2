@@ -97,6 +97,26 @@ const BOOKMARKLETS = [
       'Nada se guarda sin que pulses Guardar. El panel marca en pantalla y se detiene.',
     ],
   },
+  {
+    id: 'asistencia-marco',
+    fuente: join(raíz, 'asistencia-autofill.user.js'),
+    marco: true,
+    salida: join(aquí, 'asistencia-marco-bookmarklet.html'),
+    titulo: 'Asistencia — el recorrido entero, sin instalar nada',
+    boton: 'Asistencia GLA (marco)',
+    pasos: [
+      'En la app, copiá la asistencia del día.',
+      'En Classroom Live, abrí <strong>cualquier</strong> pantalla con la sesión iniciada.',
+      'Pulsá el favorito <strong>Asistencia GLA (marco)</strong>: la plataforma queda dentro de un marco y aparece el panel de siempre.',
+      'Pegá lo que copiaste y pulsá <strong>Flujo completo (dry-run)</strong>: pone fecha, hora, curso y asignatura solo, y marca.',
+      'Revisá lo marcado y pulsá <strong>Guardar</strong> en la plataforma, dentro del marco.',
+    ],
+    notas: [
+      '<strong>Esta es la diferencia con «Asistencia GLA» a secas.</strong> Aquel obliga a poner fecha, hora, curso y asignatura a mano, porque cada paso del filtro recarga la página y un favorito no sobrevive una recarga. Este mete la plataforma en un marco y reinyecta el script en cada carga de adentro — que es, literalmente, lo único que hacía Tampermonkey.',
+      '<strong>Guardar sigue siendo tuyo.</strong> El script se detiene con las marcas puestas en pantalla y sin enviar. Cerrar el marco o recargar las descarta. Nada se guarda si no pulsás Guardar.',
+      'Medido el 26/09/2026 con <code>recon/sonda-iframe.js</code> contra la pantalla de asistencia: la plataforma se deja enmarcar, se lee desde afuera y una recarga de adentro no mata al script de afuera.',
+    ],
+  },
 ];
 
 /*
@@ -112,8 +132,24 @@ function leerNormalizado(ruta) {
   return readFileSync(ruta, 'utf8').replace(/\r\n/g, '\n');
 }
 
+/*
+ * Envuelve un script en el marco: el favorito crea un iframe del mismo origen
+ * y reinyecta el script en cada carga de adentro. Es lo que deja correr un
+ * recorrido de varios pasos sin extensión.
+ *
+ * El script va como cadena y NO se toca: `JSON.stringify` lo mete entero,
+ * escapado, y el marco lo inyecta tal cual. Modificarlo acá sería tener dos
+ * versiones del mismo script sin que se note cuál corre.
+ */
+function envolverEnMarco(fuente) {
+  const marco = leerNormalizado(join(aquí, 'marco.js'));
+  return `var FUENTE = ${JSON.stringify(fuente)};\n${marco}`;
+}
+
 function generar(b) {
-  const fuente = leerNormalizado(b.fuente);
+  const fuente = b.marco
+    ? envolverEnMarco(leerNormalizado(b.fuente))
+    : leerNormalizado(b.fuente);
   // `void 0` al final: sin eso el navegador ve que el script devuelve algo y
   // abandona la página para mostrar ese valor.
   const url = 'javascript:' + encodeURIComponent(fuente + '\nvoid 0;');
