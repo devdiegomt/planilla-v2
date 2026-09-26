@@ -20,6 +20,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `recon/sonda-conscalifica.js` | Lee el DOM de `ConsCalificaDocentesGen` (24), la única pantalla con los cuatro periodos, para saber qué entrega antes de escribir el extractor. | No |
 | `recon/sonda-postback.js` | Mide si un postback se puede hacer con `fetch` **sin recargar la página**. Es lo que decide si Tampermonkey sigue siendo obligatorio para los scripts que recorren. | No |
 | `recon/sonda-pantalla.js` | **Sonda genérica**: lee el DOM de cualquier pantalla y dice qué filtros tiene, si hay tabla de datos, si aparece el COD_ALUM y **si la pantalla escribe**. La que hay que usar para una pantalla nueva. | No |
+| `recon/sonda-iframe.js` | Mide si la plataforma se deja **manejar desde un iframe** del mismo origen. Es lo que decide si la asistencia se puede pasar con un solo clic. | No |
 | `recon/hacer-bookmarklet.mjs` | Convierte un script en un favorito arrastrable. Genera el de la sonda y el del autofill. | No |
 | `recon/` | Sondas de reconocimiento y pruebas. | — |
 
@@ -127,6 +128,24 @@ emparejaba la opción; recortado, se manda un curso que el servidor no reconoce.
 Se guarda el bruto para enviar y el recortado para mostrar.
 **Lo que falta medir** es reemplazar el DOM con la respuesta, que haría falta
 para el autofill de la matriz. Los extractores no lo necesitan: solo leen.
+
+**Lo que falta para la asistencia no es el `fetch`: es dónde acabar.** El
+extractor solo lee, así que lee lo que vuelve y lo tira. La asistencia tiene
+que ACABAR en una pantalla de verdad, con sus scripts vivos, porque Diego
+revisa y pulsa Guardar. Reemplazar el DOM con el HTML que vuelve no sirve: al
+asignar `innerHTML` los scripts **no se vuelven a ejecutar**, así que
+`__doPostBack` queda muerto y el Guardar deja de funcionar — la pantalla se ve
+bien y no hace nada, que es el peor modo de fallar.
+La salida es al revés: el script se queda en la página de ARRIBA y mete la
+plataforma en un **iframe del mismo origen**. El que navega es el iframe —una
+página real, con sus scripts y su Guardar— y el de arriba no se recarga nunca,
+así que no muere; y al ser el mismo origen puede leer y escribir adentro sin
+restricción. `recon/sonda-iframe.js` lo mide. **Todavía sin medir contra la
+plataforma** (26/09/2026).
+Por qué importa: mientras el favorito obligue a poner fecha, hora, curso y
+asignatura a mano, marcar la asistencia en planilla-app **no le ahorra tiempo a
+nadie** — sale más rápido escribirla directo en la plataforma, y entonces el
+registro de F/R en la app solo se sostiene por el EFAS y las estadísticas.
 
 El autofill es `@grant none` —no usa APIs de Tampermonkey— así que el mismo
 archivo sirve de userscript y de favorito. `GM_info` solo se usa para detectar
