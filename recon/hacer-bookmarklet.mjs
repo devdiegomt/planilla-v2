@@ -63,6 +63,24 @@ const BOOKMARKLETS = [
     ],
   },
   {
+    id: 'sonda-iframe',
+    fuente: join(aquí, 'sonda-iframe.js'),
+    salida: join(aquí, 'sonda-iframe-bookmarklet.html'),
+    titulo: '¿Se puede manejar la plataforma desde un iframe?',
+    boton: 'Sonda iframe',
+    pasos: [
+      'Abre en Classroom Live la pantalla de <strong>asistencia diaria por asignatura</strong> y déjala cargada, con sesión iniciada.',
+      'Pulsa el favorito <strong>Sonda iframe</strong>: aparece un panel abajo a la derecha.',
+      'Pulsa <strong>Medir</strong> y espera unos segundos (carga la misma pantalla dos veces dentro de un iframe escondido).',
+      'Pulsa <strong>Copiar resultado</strong> y pega el JSON en el chat.',
+    ],
+    notas: [
+      '<strong>Qué está midiendo.</strong> Hoy el favorito de asistencia te obliga a poner fecha, hora, curso y asignatura a mano, y por eso marcar en planilla-app no ahorra tiempo. El flujo completo ya sabe recorrer el filtro solo, pero cada paso recarga la página y un favorito no sobrevive una recarga. Si el script se queda en la página de arriba y mete la plataforma en un <em>iframe</em>, el que navega es el iframe y el script de arriba no se recarga nunca.',
+      'Con <code>fetch</code> no alcanza para la asistencia: hay que acabar en una pantalla de verdad, con sus scripts vivos, porque vos tenés que revisar y pulsar Guardar. Si se reemplaza el HTML a mano, los scripts no se vuelven a ejecutar y el Guardar deja de funcionar. El iframe no tiene ese problema.',
+      '<strong>Solo mide.</strong> No llama a <code>__doPostBack</code> ni una vez, no envía ningún formulario, no toca ningún control y no deja el iframe puesto. Lo único que pide a la red es la misma dirección que ya estás viendo. <code>npm test</code> comprueba las cinco cosas, y que romper cualquiera se note.',
+    ],
+  },
+  {
     id: 'asistencia-autofill',
     fuente: join(raíz, 'asistencia-autofill.user.js'),
     salida: join(aquí, 'asistencia-autofill-bookmarklet.html'),
