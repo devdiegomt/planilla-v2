@@ -140,8 +140,34 @@ La salida es al revés: el script se queda en la página de ARRIBA y mete la
 plataforma en un **iframe del mismo origen**. El que navega es el iframe —una
 página real, con sus scripts y su Guardar— y el de arriba no se recarga nunca,
 así que no muere; y al ser el mismo origen puede leer y escribir adentro sin
-restricción. `recon/sonda-iframe.js` lo mide. **Todavía sin medir contra la
-plataforma** (26/09/2026).
+restricción. `recon/sonda-iframe.js` lo mide, y **el 26/09/2026 dio que SÍ**:
+sin `X-Frame-Options` ni `frame-ancestors`, el documento de adentro se lee desde
+afuera, adentro viven el formulario, el `__VIEWSTATE` (17.024 caracteres) y
+`__doPostBack`, y **una recarga de adentro deja intacto al script de afuera**.
+De paso: de los tres selectores de esa pantalla, la lista blanca `lst*`/`ddl*`
+solo cubre dos — el de la hora es `DropDownHora`, así que una lista blanca que
+solo mire esos dos prefijos lo dejaría fuera.
+
+**Y de ahí salió `recon/marco.js`, que es lo que hace innecesario Tampermonkey.**
+Lo que la extensión hace, en realidad, es reinyectar el script en cada carga;
+nada más. El marco hace lo mismo sin extensión: mete la plataforma en un iframe
+del mismo origen y reinyecta en cada carga de adentro. El estado del script vive
+en `sessionStorage`, que es del mismo origen, así que sobrevive las recargas del
+iframe y el script retoma donde iba.
+**La máquina de estados del autofill no se tocó**, y eso es lo que hace barato el
+cambio: el script solo cambió en qué mira para animarse al recorrido —antes
+`GM_info`, ahora `SE_REINYECTA`, que acepta la extensión **o** la marca del
+marco—. Preguntar por la marca y no por "¿estoy en un iframe?" es a propósito:
+estar dentro de un iframe no significa que alguien vaya a reinyectarte, y
+arrancar un recorrido creyendo que sí lo deja a medias sin ninguna señal.
+El marco no toca ningún control de la plataforma: crea el iframe, pone la marca
+e inyecta. Nada más. `npm test` comprueba que no llame a `__doPostBack`, que no
+envíe formularios, que no pulse nada, que enmarque **solo** la dirección ya
+abierta, que reinyecte en CADA carga y no una sola vez, que ponga la marca
+ANTES de inyectar y que el script viaje byte a byte. Las siete mutaciones que
+rompen eso salen en rojo.
+**Lo que sigue siendo de Diego es Guardar.** El dry-run no cambió: el script se
+detiene con las marcas puestas y sin enviar.
 Por qué importa: mientras el favorito obligue a poner fecha, hora, curso y
 asignatura a mano, marcar la asistencia en planilla-app **no le ahorra tiempo a
 nadie** — sale más rápido escribirla directo en la plataforma, y entonces el

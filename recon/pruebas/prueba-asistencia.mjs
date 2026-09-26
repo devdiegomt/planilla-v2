@@ -403,7 +403,13 @@ console.log('\n[abortar limpia el estado]');
 console.log('\n[pegado en la consola: no muere en silencio]');
 {
   const p = nuevaPagina({ sinTampermonkey: true });
-  ok(/No detecto Tampermonkey/.test(p.q('#ga-alerta').textContent), 'avisa que no está instalado');
+  /* El aviso ya no habla de Tampermonkey: lo que decide es si ALGUIEN va a
+     reinyectar el script tras cada recarga. La extensión lo hace, y el favorito
+     del marco también (ver `recon/marco.js`), así que nombrar la extensión
+     mandaría a instalarla a quien ya tiene una salida mejor. */
+  const aviso = p.q('#ga-alerta').textContent;
+  ok(/reinyectar/i.test(aviso), 'avisa que nadie lo va a reinyectar');
+  ok(/marco/i.test(aviso), 'y manda al favorito del marco, que sí lo hace');
 
   // El flujo completo recarga en cada paso; sin userscript no hay quién retome.
   p.q('#ga-entrada').value = JSON.stringify(ENTRADA_OK);

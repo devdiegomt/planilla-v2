@@ -34,8 +34,25 @@ for (const b of BOOKMARKLETS) {
   const codificado = m[1];
   const decodificado = decodeURIComponent(codificado.replace(/&quot;/g, '"'));
 
-  ok(decodificado === fuente + '\nvoid 0;',
-     'lo codificado es el script exacto (si falla: node recon/hacer-bookmarklet.mjs)');
+  if (b.marco) {
+    /*
+     * En modo marco lo codificado no es el script: es el envoltorio que crea
+     * el iframe y lo reinyecta en cada carga. Lo que hay que comprobar es más
+     * fuerte que "son iguales" — que el script viaja DENTRO, entero y sin
+     * tocar. Si alguien lo modificara al envolverlo habría dos versiones del
+     * mismo script y ninguna señal de cuál corre.
+     */
+    const marco = leerNormalizado(new URL('../marco.js', import.meta.url).pathname);
+    const esperado = `var FUENTE = ${JSON.stringify(fuente)};\n${marco}\nvoid 0;`;
+    ok(decodificado === esperado,
+       'lo codificado es el marco con el script dentro (si falla: node recon/hacer-bookmarklet.mjs)');
+    const dentro = decodificado.match(/^var FUENTE = ("(?:[^"\\]|\\.)*");/);
+    ok(!!dentro && JSON.parse(dentro[1]) === fuente,
+       'y el script que viaja dentro es el del repositorio, byte a byte');
+  } else {
+    ok(decodificado === fuente + '\nvoid 0;',
+       'lo codificado es el script exacto (si falla: node recon/hacer-bookmarklet.mjs)');
+  }
 
   ok(decodificado.trimEnd().endsWith('void 0;'),
      'termina en void 0, para que el navegador no abandone la página');

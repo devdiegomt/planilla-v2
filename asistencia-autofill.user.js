@@ -73,6 +73,25 @@
   const ES_USERSCRIPT = (typeof GM_info !== 'undefined');
 
   /*
+   * Lo que de verdad decide si el flujo completo puede correr no es si hay
+   * Tampermonkey: es si ALGUIEN va a volver a inyectar el script después de
+   * cada recarga. Tampermonkey lo hace, y por eso servía de discriminador.
+   *
+   * Pero el favorito del marco hace lo mismo sin extensión: mete la plataforma
+   * en un iframe del mismo origen y reinyecta esto en cada carga de adentro
+   * (`recon/hacer-bookmarklet.mjs`, modo marco). Medido el 26/09/2026 con
+   * `recon/sonda-iframe.js` contra la pantalla de asistencia: la plataforma se
+   * deja enmarcar, se lee desde afuera y una recarga de adentro no mata al de
+   * afuera.
+   *
+   * El marco lo anuncia poniendo esta marca antes de inyectar. Preguntar por
+   * la marca y no por el iframe es a propósito: estar dentro de un iframe no
+   * significa que alguien te vaya a reinyectar, y arrancar un recorrido
+   * creyendo que sí lo deja a medias sin ninguna señal.
+   */
+  const SE_REINYECTA = ES_USERSCRIPT || window.__glaMarco === true;
+
+  /*
    * El script corre en dos pantallas: la portada, donde solo hace de lanzador,
    * y la de asistencia, donde hace todo lo demás. Cuál es cuál lo decide el
    * DOM y no la URL — misma lección que en el extractor: una ruta inesperada
@@ -970,14 +989,15 @@
   $preparar.onclick = async () => {
     // El flujo completo recorre el filtro, y cada paso recarga la página. Sin
     // userscript instalado eso es fatal: no hay quién retome tras la recarga.
-    if (!ES_USERSCRIPT && !avisadoDeConsola) {
+    if (!SE_REINYECTA && !avisadoDeConsola) {
       avisadoDeConsola = true;
       $preparar.textContent = 'Seguir igual (va a morir)';
       pintarLinea({
         t: new Date().toLocaleTimeString('es-CO'), clase: 'err',
-        msg: 'Esto no está corriendo como userscript (seguramente es el favorito o la ' +
-          'consola). El flujo completo recorre el filtro y cada paso recarga la página; ' +
-          'sin userscript el script no vuelve tras la recarga. Elegí hora, curso y ' +
+        msg: 'Nadie va a reinyectar este script tras una recarga (seguramente lo pegaste ' +
+          'en la consola, o es el favorito suelto). El flujo completo recorre el filtro y ' +
+          'cada paso recarga la página, así que la corrida quedaría a medias. Usá el ' +
+          'favorito "Asistencia GLA (marco)", que sí reinyecta; o elegí hora, curso y ' +
           'asignatura a mano y usá "Solo marcar", que no navega y hace lo mismo.',
       });
       return;
@@ -1051,7 +1071,7 @@
   if (!$entrada.value) {
     $entrada.value = JSON.stringify({
       fecha: '30/07/2026', hora: 3, curso: '801', asignatura: 'INFORMATION TECHNOLOGY',
-      marcas: [{ cod_alum: '2019034387', tipo: 'falla' }],
+      marcas: [{ cod_alum: '2099000001', tipo: 'falla' }],
     }, null, 2);
   }
 
@@ -1066,12 +1086,15 @@
       'Desde acá te llevo a la pantalla de asistencia y sigo con el dry-run de siempre.';
   }
 
-  if (!ES_USERSCRIPT) {
+  if (!SE_REINYECTA) {
     $alerta.innerHTML =
-      '<div class="alerta"><b>No detecto Tampermonkey</b>' +
-      'Si pegaste esto en la consola, cada recarga lo borra y el flujo completo no puede continuar. ' +
-      '<b style="margin-top:5px">Usá "Solo marcar"</b>' +
-      'Poné hora, curso y asignatura a mano; el script marca y guarda sin recargar hasta el final.</div>';
+      '<div class="alerta"><b>Nadie me va a reinyectar</b>' +
+      'El flujo completo recorre el filtro y cada paso recarga la página. Si esto es la ' +
+      'consola o el favorito suelto, la corrida queda a medias. ' +
+      '<b style="margin-top:5px">Usá el favorito «Asistencia GLA (marco)»</b>' +
+      'Hace el recorrido entero solo y te deja la pantalla lista para revisar y guardar. ' +
+      '<b style="margin-top:5px">O usá «Solo marcar»</b>' +
+      'Poné hora, curso y asignatura a mano; marca sin recargar hasta el final.</div>';
   }
 
   if (estado && estado.registro) estado.registro.forEach(pintarLinea);
