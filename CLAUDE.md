@@ -12,7 +12,7 @@ informática del Colegio GLA, sobre la plataforma del colegio **Classroom Live W
 | `codalum-extractor.user.js` | Extrae el COD_ALUM de los 19 cursos a un JSON. Modo rápido: un solo `.xls` de "planillas por profesor" (19 hojas). | No |
 | `asistencia-autofill.user.js` | Marca la asistencia diaria desde un JSON, con dry-run. | Solo si Diego pulsa Guardar |
 | `inventario-plataforma.user.js` | Recorre las pantallas del menú y captura su estructura. | No |
-| `historial-extractor.user.js` | Recorre `ConsCalificaDocentesGen` (24) y saca la **definitiva** de cada estudiante por periodo. Es la única fuente de T1 y T2. | No |
+| `historial-extractor.user.js` | Recorre `ConsCalificaDocentesGen` (24) y saca la **definitiva** de cada estudiante por periodo. Es la única fuente de T1 y T2. Recorre con recargas, así que va **dentro del marco**. | No |
 | `actividades-extractor.user.js` | Saca de la matriz (831) el **porcentaje de cada logro**, por grado. Recorre con `fetch`, **sin recargar**, así que sirve como favorito. **Nunca pulsa Editar.** | No |
 | `actividades-autofill.user.js` | **Llena** la matriz (831) con el plan que arma planilla-app: título, porcentaje, ciclo y destino. Fila por fila, y solo donde la pantalla coincide con lo que el plan dice que hay. | **Sí**, al pulsar Aplicar |
 | `verificar-planilla.mjs` | Compara un Califica descargado contra el generado por la app. Código 0 = se puede subir, 1 = bloqueante. | No (local) |
@@ -168,6 +168,19 @@ ANTES de inyectar y que el script viaje byte a byte. Las siete mutaciones que
 rompen eso salen en rojo.
 **Lo que sigue siendo de Diego es Guardar.** El dry-run no cambió: el script se
 detiene con las marcas puestas y sin enviar.
+**Confirmado contra la plataforma el 26/09/2026: funciona.**
+
+**El marco es genérico, y eso deja al historial también sin extensión.**
+`historial-extractor` tenía la misma forma —puerta `ES_USERSCRIPT` y estado en
+`sessionStorage`—, así que el mismo cambio de una línea y la misma envoltura lo
+vuelven favorito. Con eso **no queda ningún camino de LECTURA que pida instalar
+nada**, que es lo que hace contable la historia para otro docente: todo se
+arrastra. El único que sigue fuera es `actividades-autofill`, y **a propósito**:
+es el que escribe, y verlo ir fila por fila en la pantalla es parte de lo que lo
+hace seguro.
+Esa puerta del historial **no la probaba nadie**, y por eso el cambio habría
+pasado sin que ninguna prueba se enterara. Ahora está cubierta, y quitarle la
+marca deja dos aserciones en rojo.
 Por qué importa: mientras el favorito obligue a poner fecha, hora, curso y
 asignatura a mano, marcar la asistencia en planilla-app **no le ahorra tiempo a
 nadie** — sale más rápido escribirla directo en la plataforma, y entonces el

@@ -280,5 +280,26 @@ console.log('Extractor de historial');
   ok(/valor === '%'/.test(sinComentarios), 'la guarda contra "< TODOS >" está en el código, no solo en la prueba');
 }
 
+// ------------------------------- 9. Quién puede completar el recorrido
+{
+  /*
+   * Este script recorre y cada paso recarga la página, así que solo puede
+   * terminar si ALGUIEN lo reinyecta. Antes eso solo lo hacía Tampermonkey;
+   * ahora también el favorito del marco. Nadie probaba esta puerta, y por eso
+   * el cambio de una a la otra pasó sin que ninguna prueba se enterara.
+   */
+  console.log('\n[quién puede completar el recorrido]');
+  const linea = /const SE_REINYECTA = .*/.exec(FUENTE);
+  ok(!!linea, 'la condición vive en una sola línea, no repartida');
+  ok(linea && /__glaMarco/.test(linea[0]),
+     'acepta la marca del marco, que reinyecta sin instalar nada');
+  ok(linea && /GM_info|ES_USERSCRIPT/.test(linea[0]),
+     'y sigue aceptando Tampermonkey, para no romper el camino de antes');
+  ok(!/if \(!ES_USERSCRIPT\)/.test(FUENTE),
+     'ya no queda ninguna puerta que mire solo la extensión');
+  ok(!/window\.self\s*!==\s*window\.top/.test(FUENTE),
+     'no se niega a correr dentro de un iframe');
+}
+
 console.log(fallos === 0 ? '\n✓ todo verde' : `\n${fallos} FALLARON`);
 process.exit(fallos ? 1 : 0);
