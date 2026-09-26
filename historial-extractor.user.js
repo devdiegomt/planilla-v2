@@ -95,6 +95,16 @@
 
   const ES_USERSCRIPT = (typeof GM_info !== 'undefined');
 
+  /*
+   * Lo que decide si esta corrida puede completarse no es si hay Tampermonkey:
+   * es si ALGUIEN va a volver a inyectar el script tras cada recarga. La
+   * extensión lo hace, y el favorito del marco también, sin instalar nada
+   * (`recon/marco.js`). Mismo razonamiento y misma marca que en el autofill de
+   * asistencia; se pregunta por la marca y no por "¿estoy en un iframe?",
+   * porque estar dentro de uno no significa que alguien te vaya a reinyectar.
+   */
+  const SE_REINYECTA = ES_USERSCRIPT || window.__glaMarco === true;
+
   // ======================================================================
   // UTILIDADES
   // ======================================================================
@@ -558,12 +568,13 @@
   // ARRANQUE
   // ======================================================================
 
-  if (!ES_USERSCRIPT) {
+  if (!SE_REINYECTA) {
     $('#gh-alerta').innerHTML =
-      '<div class="alerta"><b>No detecto Tampermonkey</b><br>' +
+      '<div class="alerta"><b>Nadie me va a reinyectar</b><br>' +
       'Cada elección de los desplegables recarga la página, y lo que se pega en la consola ' +
       'no sobrevive a una recarga: la corrida quedaría en el primer curso. ' +
-      'Esto necesita estar instalado como userscript.</div>';
+      'Usá el favorito «Historial GLA (marco)», que reinyecta solo; o instalalo como ' +
+      'userscript.</div>';
   }
 
   if (estado && estado.registro) estado.registro.forEach(pintarLinea);

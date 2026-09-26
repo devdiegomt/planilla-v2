@@ -98,6 +98,24 @@ const BOOKMARKLETS = [
     ],
   },
   {
+    id: 'historial-marco',
+    fuente: join(raíz, 'historial-extractor.user.js'),
+    marco: true,
+    salida: join(aquí, 'historial-marco-bookmarklet.html'),
+    titulo: 'Historial — las definitivas de trimestres pasados, sin instalar nada',
+    boton: 'Historial GLA (marco)',
+    pasos: [
+      'En Classroom Live, abrí <strong>cualquier</strong> pantalla con la sesión iniciada.',
+      'Pulsá el favorito <strong>Historial GLA (marco)</strong>: la plataforma queda dentro de un marco y aparece el panel.',
+      'Elegí los periodos y pulsá arrancar. Recorre curso por curso solo.',
+      'Cuando termine, copiá lo que muestra y pegalo en la app.',
+    ],
+    notas: [
+      '<strong>Solo lee.</strong> Recorre <code>ConsCalificaDocentesGen</code> y saca la definitiva de cada estudiante por periodo. No toca ningún control de escritura.',
+      'Antes pedía Tampermonkey por lo mismo que la asistencia: cada elección de los desplegables recarga la página y un favorito no sobrevive una recarga. El marco reinyecta el script en cada carga de adentro, que es lo único que hacía la extensión.',
+    ],
+  },
+  {
     id: 'asistencia-marco',
     fuente: join(raíz, 'asistencia-autofill.user.js'),
     marco: true,
